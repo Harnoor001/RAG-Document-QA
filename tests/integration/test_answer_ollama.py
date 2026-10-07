@@ -2,6 +2,8 @@
 
 import pytest
 
+from app.config import get_settings
+
 pytestmark = pytest.mark.integration
 
 
@@ -15,10 +17,12 @@ def explain(answer):
 
 def test_t2_14_refund_window(ask):
     a = ask("What's the refund window?")
+    floor = round(get_settings().confidence_threshold + 0.05, 2)
+    print(f"T2.14 confidence {a.confidence} (needs >= {floor}): {explain(a)}")
     assert not a.refused, explain(a)
     assert "30" in a.answer, explain(a)
     assert 12 in cited_pages(a) and "[p.12]" in a.answer, explain(a)
-    assert a.confidence >= 0.5, explain(a)
+    assert a.confidence >= floor, f"confidence {a.confidence} < {floor}: {explain(a)}"
 
 
 def test_t2_15_employee_discount(ask):

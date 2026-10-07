@@ -14,13 +14,14 @@ from app.qa.retriever import Retriever
 
 def render(answer: Answer) -> str:
     lines = [answer.answer]
+    timing = f"load {answer.load_ms} ms · answer {answer.answer_ms} ms"
     if answer.refused:
-        lines.append(f"confidence {answer.confidence:.2f} · refused · {answer.latency_ms} ms")
+        lines.append(f"confidence {answer.confidence:.2f} · refused · {timing}")
     else:
         noun = "source" if answer.sources == 1 else "sources"
         lines.append(
             f"confidence {answer.confidence:.2f} · {answer.sources} {noun} · local LLM"
-            f" ({answer.model}) · {answer.latency_ms} ms"
+            f" ({answer.model}) · {timing}"
         )
         pages = ", ".join(f"p.{format_pages(c.pages)}" for c in answer.citations)
         lines.append(f"cited: {pages}")

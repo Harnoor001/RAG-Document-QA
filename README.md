@@ -21,7 +21,7 @@ ollama serve &                                 # in another terminal
 ollama pull llama3.2:3b
 python -m app.ask 8d9ae4a8c463 "What's the refund window?"
 # Refunds are accepted within 30 days of purchase if the item is unused [p.12].
-# confidence 0.xx · 1 source · local LLM (llama3.2:3b) · <latency> ms   (illustrative)
+# confidence 0.xx · 1 source · local LLM (llama3.2:3b) · load <ms> · answer <ms>   (illustrative)
 # cited: p.12
 ```
 
@@ -53,6 +53,7 @@ Every setting can be overridden with an environment variable (or a `.env` file).
 | `OLLAMA_URL` | `http://localhost:11434` | Ollama server |
 | `LLM_MODEL` | `llama3.2:3b` | Ollama model, e.g. `llama3.1:8b` |
 | `LLM_TIMEOUT_S` | `60` | per-request timeout (2 retries) |
+| `OLLAMA_KEEP_ALIVE` | `30m` | how long Ollama keeps the model loaded after a request |
 | `MAX_CONTEXT_CHARS` | `6000` | context budget; lowest-scoring chunks are dropped to fit |
 
 ## How ingestion works
@@ -71,6 +72,12 @@ Every setting can be overridden with an environment variable (or a `.env` file).
   into place.
 
 ## How answering works
+
+`Answer.load_ms` is one-off loading paid by that call (embedding model, FAISS index, and the
+Ollama model if it was not resident); `Answer.answer_ms` is retrieval plus generation. Each CLI
+run is a fresh process, so it pays the embedding-model load every time; the Phase 3 API loads it
+once at startup. When the embedding model is already in the Hugging Face cache, `HF_HUB_OFFLINE=1`
+is set automatically so loading it makes no network calls (an explicit `HF_HUB_OFFLINE` wins).
 
 - **Retriever** (`app/qa/retriever.py`): top-k FAISS search, drops near-duplicate chunks (one
   contained in the other, or word Jaccard >= 0.8) keeping the higher score, then trims to

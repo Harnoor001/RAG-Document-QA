@@ -146,3 +146,67 @@ def test_long_snippet_is_cut_on_a_word():
     snippet = result.citations[0].snippet
     assert snippet.endswith("…") and len(snippet) <= 201
     assert snippet[:-1].split()[-1] == "word"
+
+
+@pytest.mark.parametrize(
+    ("reply", "expected"),
+    [
+        ("Use cases are listed [C1][C2].", "Use cases are listed [p.1-2]."),  # the reported case
+        ("Use cases are listed [C2] [C1].", "Use cases are listed [p.1-2]."),
+        ("Use cases are listed [C1, C2].", "Use cases are listed [p.1-2]."),
+        ("Spans pages [C1][C3].", "Spans pages [p.1-3]."),  # [1,2] + [2,3] overlap on p.2
+        ("Separate pages [C2][C4].", "Separate pages [p.1][p.5]."),  # no overlap: both kept
+        ("First [C1]. Later [C2].", "First [p.1-2]. Later [p.1]."),  # not adjacent: untouched
+    ],
+)
+def test_overlapping_page_citations_are_merged(reply, expected):
+    hits = [
+        (Chunk("d-0", "alpha text", [1, 2]), 0.7),
+        (Chunk("d-1", "beta words", [1]), 0.6),
+        (Chunk("d-2", "gamma lines", [2, 3]), 0.5),
+        (Chunk("d-3", "delta notes", [5]), 0.4),
+    ]
+    result = stub_answerer(FakeLLM(reply), hits).answer("doc", "q")
+    assert result.answer == expected
+
+
+class LoadingStore(StubStore):
+    """Pretends the first warm_up loads a model, like MiniLM does in a fresh process."""
+
+    def __init__(self, hits):
+        super().__init__(hits)
+        self.loaded = False
+
+    def warm_up(self, doc_id):
+        if not self.loaded:
+            import time
+
+            time.sleep(0.05)
+            self.loaded = True
+
+
+def test_load_time_is_reported_apart_from_answer_time():
+    store = LoadingStore([(Chunk("d-0", "alpha text", [1]), 0.9)])
+    answerer = Answerer(Retriever(store, top_k=5), FakeLLM("Alpha [C1]."), threshold=0.35)
+    first = answerer.answer("doc", "q")
+    assert first.load_ms >= 45
+    assert first.latency_ms == first.load_ms + first.answer_ms
+    second = answerer.answer("doc", "q")
+    assert second.load_ms < 45  # already loaded
+
+
+def test_refusal_also_reports_load_time():
+    store = LoadingStore([(Chunk("d-0", "alpha text", [1]), 0.1)])
+    llm = FakeLLM("never")
+    result = Answerer(Retriever(store, top_k=5), llm, threshold=0.35).answer("doc", "q")
+    assert result.refused and llm.calls == []
+    assert result.load_ms >= 45 and result.answer_ms < result.load_ms
+
+
+def test_ollama_model_load_counts_as_load_time():
+    llm = FakeLLM("Alpha [C1].")
+    llm.last_load_s = 0.2
+    hits = [(Chunk("d-0", "alpha text", [1]), 0.9)]
+    result = stub_answerer(llm, hits).answer("doc", "q")
+    # the reported 200 ms load is counted, capped at the (tiny) wall-clock total of a fake call
+    assert result.load_ms == result.latency_ms and result.answer_ms == 0

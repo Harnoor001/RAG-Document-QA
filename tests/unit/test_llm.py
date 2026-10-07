@@ -16,7 +16,9 @@ def test_ollama_sends_chat_request_with_temperature_zero():
     def handler(request):
         seen["url"] = str(request.url)
         seen["body"] = json.loads(request.content)
-        return httpx.Response(200, json={"message": {"content": "  Answer [C1]. "}})
+        return httpx.Response(
+            200, json={"message": {"content": "  Answer [C1]. "}, "load_duration": 1_500_000_000}
+        )
 
     llm = OllamaLLM(model="llama3.2:3b", url="http://ollama:11434/", client=client_for(handler))
     assert llm.generate("sys", "usr") == "Answer [C1]."
@@ -24,6 +26,8 @@ def test_ollama_sends_chat_request_with_temperature_zero():
     body = seen["body"]
     assert body["model"] == "llama3.2:3b" and body["stream"] is False
     assert body["options"]["temperature"] == 0
+    assert body["keep_alive"] == "30m"
+    assert llm.last_load_s == 1.5
     assert [m["role"] for m in body["messages"]] == ["system", "user"]
 
 
@@ -96,8 +100,10 @@ def test_is_available_checks_model_list():
 def test_settings_drive_defaults(monkeypatch):
     monkeypatch.setenv("LLM_MODEL", "llama3.1:8b")
     monkeypatch.setenv("OLLAMA_URL", "http://gpu-box:11434")
+    monkeypatch.setenv("OLLAMA_KEEP_ALIVE", "2h")
     llm = OllamaLLM()
     assert (llm.name, llm.url, llm.timeout_s) == ("llama3.1:8b", "http://gpu-box:11434", 60.0)
+    assert llm.keep_alive == "2h"
 
 
 def test_fake_llm_modes():

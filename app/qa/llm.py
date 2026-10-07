@@ -28,12 +28,15 @@ class OllamaLLM:
         timeout_s: float | None = None,
         retries: int = 2,
         client: httpx.Client | None = None,
+        keep_alive: str | None = None,
     ):
         settings = get_settings()
         self.name = model or settings.llm_model
         self.url = (url or settings.ollama_url).rstrip("/")
         self.timeout_s = timeout_s if timeout_s is not None else settings.llm_timeout_s
         self.retries = retries
+        self.keep_alive = keep_alive or settings.ollama_keep_alive
+        self.last_load_s = 0.0  # time Ollama spent loading the model for the last call
         self._client = client or httpx.Client(timeout=self.timeout_s)
 
     def generate(self, system: str, user: str) -> str:
@@ -44,6 +47,7 @@ class OllamaLLM:
                 {"role": "user", "content": user},
             ],
             "stream": False,
+            "keep_alive": self.keep_alive,
             "options": {"temperature": 0, "seed": 0},
         }
         last_error: Exception | None = None
@@ -68,7 +72,9 @@ class OllamaLLM:
                 raise LLMUnavailableError(
                     f"Ollama rejected the request ({response.status_code}): {response.text[:200]}"
                 )
-            return response.json()["message"]["content"].strip()
+            data = response.json()
+            self.last_load_s = data.get("load_duration", 0) / 1e9  # Ollama reports nanoseconds
+            return data["message"]["content"].strip()
 
         if isinstance(last_error, httpx.TimeoutException):
             raise LLMUnavailableError(

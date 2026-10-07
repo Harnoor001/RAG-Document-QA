@@ -3,7 +3,10 @@
 from __future__ import annotations
 
 import hashlib
+import os
 import re
+import sys
+from pathlib import Path
 from typing import Protocol, runtime_checkable
 
 import numpy as np
@@ -63,6 +66,7 @@ class MiniLMEmbedder:
 
     def _load(self):
         if self._model is None:
+            prefer_offline(self.name)
             from sentence_transformers import SentenceTransformer
 
             self._model = SentenceTransformer(self.name, device="cpu")
@@ -84,6 +88,37 @@ class MiniLMEmbedder:
             texts, batch_size=32, normalize_embeddings=True, convert_to_numpy=True
         )
         return _normalise(vectors)
+
+
+def hf_cache_dir() -> Path:
+    """Where huggingface_hub keeps downloads, following its own environment variables."""
+    if os.environ.get("HF_HUB_CACHE"):
+        return Path(os.environ["HF_HUB_CACHE"])
+    home = os.environ.get("HF_HOME") or os.path.join(
+        os.environ.get("XDG_CACHE_HOME", os.path.expanduser("~/.cache")), "huggingface"
+    )
+    return Path(home) / "hub"
+
+
+def is_model_cached(model_name: str) -> bool:
+    """True when the model is a local folder or a complete snapshot is in the HF cache."""
+    if Path(model_name).is_dir():
+        return True
+    repo = hf_cache_dir() / ("models--" + model_name.replace("/", "--"))
+    return any(repo.glob("snapshots/*/modules.json")) and any(repo.glob("snapshots/*/config.json"))
+
+
+def prefer_offline(model_name: str) -> bool:
+    """Set HF_HUB_OFFLINE=1 when the model is already cached, so loading it makes no network
+    calls (and no unauthenticated-request warning). An explicit HF_HUB_OFFLINE is respected.
+    Must run before sentence-transformers is imported: huggingface_hub reads it at import."""
+    if "HF_HUB_OFFLINE" in os.environ or not is_model_cached(model_name):
+        return False
+    os.environ["HF_HUB_OFFLINE"] = "1"
+    constants = sys.modules.get("huggingface_hub.constants")
+    if constants is not None:  # already imported by someone else: update the live flag too
+        constants.HF_HUB_OFFLINE = True
+    return True
 
 
 def get_embedder(model_name: str) -> Embedder:

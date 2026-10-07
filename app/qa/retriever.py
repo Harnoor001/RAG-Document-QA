@@ -40,6 +40,12 @@ class Retriever:
             max_context_chars if max_context_chars is not None else settings.max_context_chars
         )
 
+    def warm_up(self, doc_id: str) -> None:
+        """Load the document index and the embedding model, so their cost is timed apart."""
+        warm = getattr(self.store, "warm_up", None)
+        if warm is not None:
+            warm(doc_id)
+
     def retrieve(self, doc_id: str, question: str, k: int | None = None) -> RetrievalResult:
         k = k if k is not None else self.top_k
         # over-fetch so that dropping duplicates still leaves k distinct chunks
