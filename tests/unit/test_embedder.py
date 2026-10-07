@@ -21,7 +21,9 @@ def test_hash_embedder_is_deterministic_and_discriminative():
 
 def test_embedders_satisfy_protocol():
     assert isinstance(HashEmbedder(), Embedder)
-    assert isinstance(MiniLMEmbedder(), Embedder)
+    # checked statically: on Python 3.11 isinstance() would evaluate .dim and load the model
+    assert all(hasattr(MiniLMEmbedder, attr) for attr in ("dim", "embed"))
+    assert MiniLMEmbedder().name
 
 
 def test_get_embedder_picks_by_name():
@@ -31,14 +33,29 @@ def test_get_embedder_picks_by_name():
     assert lazy._model is None  # nothing loaded until the first embed
 
 
-def test_minilm_wraps_model_output(monkeypatch):
-    class FakeModel:
-        def get_sentence_embedding_dimension(self):
-            return 4
+class OldModel:
+    """sentence-transformers before get_embedding_dimension existed."""
 
-        def encode(self, texts, **kwargs):
-            assert kwargs["normalize_embeddings"] is True
-            return np.ones((len(texts), 4), dtype=np.float64) * 3
+    def get_sentence_embedding_dimension(self):
+        return 4
+
+    def encode(self, texts, **kwargs):
+        assert kwargs["normalize_embeddings"] is True
+        return np.ones((len(texts), 4), dtype=np.float64) * 3
+
+
+class NewModel(OldModel):
+    def get_embedding_dimension(self):
+        return 4
+
+    def get_sentence_embedding_dimension(self):
+        raise AssertionError("deprecated name must not be called when the new one exists")
+
+
+@pytest.mark.parametrize("model_cls", [OldModel, NewModel])
+def test_minilm_wraps_model_output(monkeypatch, model_cls):
+    class FakeModel(model_cls):
+        pass
 
     emb = MiniLMEmbedder("fake")
     monkeypatch.setattr(emb, "_load", lambda: FakeModel())

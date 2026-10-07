@@ -70,7 +70,12 @@ class MiniLMEmbedder:
 
     @property
     def dim(self) -> int:
-        return int(self._load().get_sentence_embedding_dimension())
+        model = self._load()
+        # sentence-transformers renamed this; the old name now raises a FutureWarning
+        getter = getattr(model, "get_embedding_dimension", None)
+        if getter is None:
+            getter = model.get_sentence_embedding_dimension
+        return int(getter())
 
     def embed(self, texts: list[str]) -> np.ndarray:
         if not texts:

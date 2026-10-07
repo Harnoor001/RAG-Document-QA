@@ -11,6 +11,13 @@ class Settings(BaseSettings):
     embed_model: str = "sentence-transformers/all-MiniLM-L6-v2"
     data_dir: str = "data/indexes"
 
+    top_k: int = 5
+    confidence_threshold: float = 0.35
+    ollama_url: str = "http://localhost:11434"
+    llm_model: str = "llama3.2:3b"
+    llm_timeout_s: float = 60.0
+    max_context_chars: int = 6000
+
 
 def get_settings() -> Settings:
     """Read settings fresh from the environment (no caching, so env overrides apply immediately)."""

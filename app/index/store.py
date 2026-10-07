@@ -167,6 +167,13 @@ class DocumentStore:
         self._cache[doc_id] = doc
         return doc
 
+    def resolve_id(self, prefix: str) -> str:
+        """Expand a unique doc_id prefix (the CLI prints 12 chars) to the full id."""
+        matches = [m.doc_id for m in self.list_docs() if m.doc_id.startswith(prefix)]
+        if len(matches) != 1 or not prefix:
+            raise DocumentNotFoundError(prefix if not matches else f"{prefix} (ambiguous)")
+        return matches[0]
+
     def list_docs(self) -> list[Manifest]:
         if not self.data_dir.is_dir():
             return []
