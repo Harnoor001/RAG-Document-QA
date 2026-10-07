@@ -12,8 +12,8 @@ def _cached_load(path: str, size: int, mtime: float):
     return load_pdf(path)
 
 
-@pytest.fixture(autouse=True)
-def fast_pdf_loading(monkeypatch):
+@pytest.fixture(scope="session", autouse=True)
+def fast_pdf_loading():
     """pdfplumber needs ~1.3 s for the 42-page fixture. The loader has its own tests, so the
     store tests reuse its parsed pages instead of re-parsing the same file in every test."""
 
@@ -21,7 +21,9 @@ def fast_pdf_loading(monkeypatch):
         stat = Path(path).stat()
         return _cached_load(str(Path(path).resolve()), stat.st_size, stat.st_mtime)
 
-    monkeypatch.setattr(store_module, "load_pdf", load)
+    with pytest.MonkeyPatch.context() as mp:
+        mp.setattr(store_module, "load_pdf", load)
+        yield
 
 
 @pytest.fixture(scope="session")

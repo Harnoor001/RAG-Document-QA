@@ -167,6 +167,13 @@ class DocumentStore:
         self._cache[doc_id] = doc
         return doc
 
+    def resolve_id(self, prefix: str) -> str:
+        """Expand a unique doc_id prefix (the CLI prints 12 chars) to the full id."""
+        matches = [m.doc_id for m in self.list_docs() if m.doc_id.startswith(prefix)]
+        if len(matches) != 1 or not prefix:
+            raise DocumentNotFoundError(prefix if not matches else f"{prefix} (ambiguous)")
+        return matches[0]
+
     def list_docs(self) -> list[Manifest]:
         if not self.data_dir.is_dir():
             return []
@@ -179,6 +186,11 @@ class DocumentStore:
             raise DocumentNotFoundError(doc_id)
         shutil.rmtree(folder)
         self._cache.pop(doc_id, None)
+
+    def warm_up(self, doc_id: str) -> None:
+        """Load the index from disk and the embedding model into memory (no-op once loaded)."""
+        self.load(doc_id)
+        _ = self.embedder.dim
 
     def search(self, doc_id: str, query: str, k: int = 5) -> list[tuple[Chunk, float]]:
         doc = self.load(doc_id)

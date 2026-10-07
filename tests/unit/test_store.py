@@ -144,3 +144,13 @@ def test_stray_folders_are_ignored_by_list_docs(store, handbook):
     (store.data_dir / "not-a-doc").mkdir()
     shutil.copy(handbook, store.data_dir / "loose.pdf")
     assert len(store.list_docs()) == 1
+
+
+def test_resolve_id_accepts_unique_prefix(store, handbook, make_pdf):
+    a = store.ingest(handbook).doc_id
+    store.ingest(make_pdf("memo.pdf", ["A short memo about the stock count."]))
+    assert store.resolve_id(a[:12]) == a
+    with pytest.raises(DocumentNotFoundError):
+        store.resolve_id("")
+    with pytest.raises(DocumentNotFoundError):
+        store.resolve_id("zzzz")
