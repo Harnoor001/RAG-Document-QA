@@ -26,6 +26,8 @@ class Chunk:
     text: str
     pages: list[int] = field(default_factory=list)
     start_char: int = 0  # offset of the chunk's first character within its first page's text
+    # where each page in ``pages`` begins inside ``text`` (first is 0); empty for old indexes
+    page_starts: list[int] = field(default_factory=list)
 
     def to_dict(self) -> dict:
         return asdict(self)
@@ -35,7 +37,7 @@ class Chunk:
         return cls(**data)
 
 
-CHUNKER_VERSION = 2  # bump when chunk boundaries change so stored indexes are rebuilt
+CHUNKER_VERSION = 3  # bump when chunk boundaries change so stored indexes are rebuilt
 
 
 def chunk_pages(
@@ -50,15 +52,17 @@ def chunk_pages(
         start = 0
         while start < len(text):
             end = len(text) if len(text) - start <= size else _choose_end(text, breaks, start, size)
-            body = text[start:end].strip()
-            touched = [n for n, s, e in spans if s < end and e > start]
-            first_page_start = next(s for n, s, e in spans if n == touched[0])
+            raw = text[start:end]
+            body = raw.strip()
+            offset = start + len(raw) - len(raw.lstrip())  # where body begins in the segment
+            touched = [(n, s) for n, s, e in spans if s < end and e > start]
             chunks.append(
                 Chunk(
                     id=f"{doc_id[:8]}-{len(chunks):04d}",
                     text=body,
-                    pages=touched,
-                    start_char=max(start - first_page_start, 0),
+                    pages=[n for n, _ in touched],
+                    start_char=max(start - touched[0][1], 0),
+                    page_starts=[min(max(s - offset, 0), len(body)) for _, s in touched],
                 )
             )
             if end >= len(text):

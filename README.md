@@ -172,7 +172,12 @@ is set automatically so loading it makes no network calls (an explicit `HF_HUB_O
   fix it; the CLI prints it as one line and exits with code 3.
 - **Citation validation** (`app/qa/answerer.py`): `[C#]` tags become `[p.12]` or `[p.20-21]`,
   tags outside the retrieved set are dropped, and an answer with no valid citation (or the
-  refusal phrase) is returned as a refusal. Confidence is the highest score among the chunks
+  refusal phrase) is returned as a refusal. Each tag is checked against the sentence it
+  follows: a cited chunk that shares no content words with it, or fewer than half as many as
+  the best chunk in the same tag, is dropped. A chunk that spans pages is cited only for the
+  page(s) holding the sentences that match (each chunk stores where every page starts in its
+  text), so a fact on p.21 of a p.20-21 chunk is cited as `[p.21]`. A sentence that itself runs
+  over the page break still cites both pages. Confidence is the highest score among the chunks
   the answer actually cites.
 
 ## Evaluation
@@ -216,7 +221,10 @@ questions at that threshold, with dev alongside for reference:
 - **Gate before generation.** Below the threshold the LLM is never called, which is fast and
   cannot hallucinate.
 - **Citations validated after generation.** The model cites `[C#]` blocks; the code maps them to
-  pages, drops invented ones, merges overlapping pages, and refuses answers with no valid citation.
+  pages, drops invented ones and ones the sentence doesn't overlap, narrows multi-page chunks to
+  the page with the matching text, merges overlapping pages, and refuses answers with no valid
+  citation. Matching is by shared content words, so a paraphrase with no words in common with
+  the source keeps all its citations rather than losing them.
 - **Prompt injection.** Document text is wrapped in `<context>` and the rules treat it as text;
   even if a model obeys injected text, an uncited answer is refused.
 - **Page-aware chunking.** Chunks stop at page breaks unless a sentence runs across one, so

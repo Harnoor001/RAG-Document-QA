@@ -10,6 +10,7 @@ from eval.run_eval import (
     FLOOR,
     SWEEP,
     Record,
+    answer_failures,
     apply_threshold,
     assign_splits,
     choose_threshold,
@@ -18,6 +19,7 @@ from eval.run_eval import (
     keywords_present,
     load_golden,
     pick_threshold,
+    refusal_failures,
     run,
     update_readme,
 )
@@ -99,6 +101,7 @@ def test_t3_11_harness_produces_every_metric(tmp_path, mini_golden, handbook):
     assert "no headline number" in md and "Threshold sweep (dev split only)" in md
     assert "Answer accuracy, strict" in md and "Answer accuracy, lenient" in md
     assert "Citation precision, per page" in md and "Citation failures" in md
+    assert "Refusal failures" in md and "Answer failures" in md
     assert "False-refusal rate" in md and "(chosen)" in md and "| refund | dev |" in md
     saved = json.loads((out / "results.json").read_text())
     assert saved["threshold"] == report["threshold"]
@@ -183,11 +186,31 @@ def test_citation_precision_strict_and_per_page():
 
     failures = {f["id"]: f for f in citation_failures(records, 0.3)}
     assert set(failures) == {"straddle", "extra", "bare"}
-    assert failures["straddle"]["reason"] == "multi-page chunk (gold + other page)"
+    assert failures["straddle"]["reason"] == "multi-page citation (gold + other page)"
     assert failures["extra"]["reason"] == "extra chunk (no gold page)"
     assert failures["bare"]["reason"] == "no citation"
     assert failures["extra"]["gold_pages"] == [12] and failures["extra"]["cited_pages"] == [12, 30]
     assert failures["extra"]["question"] == "q"
+
+
+def test_refusal_and_answer_failures_are_listed():
+    records = [
+        rec("good"),
+        rec("partial", gold_keywords=["30 days", "unused"], split="dev"),
+        rec("gated", top_score=0.2, split="dev"),
+        rec("llm-no", llm_refused=True, llm_answer="I couldn't find this in the document."),
+        unans("u-ok", llm_refused=True),
+        unans("u-bad", llm_answer="Forty days [p.12].", confidence=0.61, top_score=0.64),
+    ]
+    refusals = refusal_failures(records, 0.3)
+    assert [f["id"] for f in refusals] == ["u-bad"]
+    assert refusals[0]["answer"] == "Forty days [p.12]." and refusals[0]["confidence"] == 0.61
+    answers = {f["id"]: f for f in answer_failures(records, 0.3)}
+    assert set(answers) == {"partial", "gated", "llm-no"}
+    assert answers["partial"]["missing_keywords"] == ["unused"]
+    assert answers["partial"]["split"] == "dev" and not answers["partial"]["refused"]
+    assert answers["gated"]["refused_by"] == "gate"
+    assert answers["llm-no"]["refused_by"] == "llm"
 
 
 def _dev(scores_ok, scores_bad):
@@ -329,6 +352,7 @@ def test_main_runs_with_injected_components(monkeypatch, tmp_path, mini_golden, 
     assert run_eval.main(common) == 0
     captured = capsys.readouterr()
     assert "real set skipped" in captured.err and "Citation failures" in captured.out
+    assert "Refusal failures" in captured.out and "Answer failures" in captured.out
 
     args = common + ["--real-pdf", str(handbook), "--apply", "--update-readme"]
     assert run_eval.main(args) == 0

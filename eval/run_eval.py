@@ -65,7 +65,8 @@ class Record:
     answer_ms: int
     load_ms: int
     split: str = "test"
-    cited_chunks: list[list[int]] = field(default_factory=list)  # pages of each cited chunk
+    cited_chunks: list[list[int]] = field(default_factory=list)  # pages cited per chunk
+    chunk_spans: list[list[int]] = field(default_factory=list)  # every page each cited chunk spans
 
 
 @dataclass
@@ -140,6 +141,7 @@ def run_questions(store, llm, doc_id: str, items: list[dict], k: int = 5) -> lis
                 load_ms=answer.load_ms,
                 split=item["split"],
                 cited_chunks=[list(c.pages) for c in answer.citations],
+                chunk_spans=[list(c.chunk_pages or c.pages) for c in answer.citations],
             )
         )
     return records
@@ -183,7 +185,7 @@ def citation_failure_reason(r: Record) -> str:
         if gold.isdisjoint(pages):
             reasons.append("extra chunk (no gold page)")
         elif not set(pages) <= gold:
-            reasons.append("multi-page chunk (gold + other page)")
+            reasons.append("multi-page citation (gold + other page)")
     return ", ".join(dict.fromkeys(reasons)) or "unknown"
 
 
@@ -196,10 +198,51 @@ def citation_failures(records: list[Record], threshold: float) -> list[dict]:
             "gold_pages": r.gold_pages,
             "cited_pages": r.cited_pages,
             "cited_chunks": r.cited_chunks,
+            "chunk_spans": r.chunk_spans,
             "reason": citation_failure_reason(r),
         }
         for r in records
         if r.answerable and not refused_at(r, threshold) and not citation_ok(r)
+    ]
+
+
+def missing_keywords(r: Record) -> list[str]:
+    return [kw for kw in r.gold_keywords if not keywords_present(r.llm_answer, [kw])]
+
+
+def refusal_failures(records: list[Record], threshold: float) -> list[dict]:
+    """Unanswerable questions that were answered at this threshold."""
+    return [
+        {
+            "id": r.id,
+            "split": r.split,
+            "question": r.question,
+            "answer": r.llm_answer,
+            "top_score": r.top_score,
+            "confidence": r.confidence,
+            "cited_pages": r.cited_pages,
+        }
+        for r in records
+        if not r.answerable and not refused_at(r, threshold)
+    ]
+
+
+def answer_failures(records: list[Record], threshold: float) -> list[dict]:
+    """Answerable questions that fail the strict check at this threshold, and why."""
+    return [
+        {
+            "id": r.id,
+            "split": r.split,
+            "question": r.question,
+            "gold_keywords": r.gold_keywords,
+            "missing_keywords": [] if refused_at(r, threshold) else missing_keywords(r),
+            "refused": refused_at(r, threshold),
+            "refused_by": ("gate" if r.top_score < threshold else "llm" if r.llm_refused else None),
+            "top_score": r.top_score,
+            "answer": r.llm_answer,
+        }
+        for r in records
+        if r.answerable and not correct_at(r, threshold)
     ]
 
 
@@ -406,6 +449,8 @@ def run(
             "dev": asdict(compute_metrics([r for r in records if r.split == "dev"], t)),
             "top_score": score_summary(records),
             "citation_failures": citation_failures(records, t),
+            "refusal_failures": refusal_failures(records, t),
+            "answer_failures": answer_failures(records, t),
             "records": [asdict(r) for r in records],
         }
     if out_dir is not None:
@@ -473,15 +518,49 @@ def summary_table(report: dict, dataset: str | None = None) -> str:
 
 def _failure_lines(failures: list[dict]) -> list[str]:
     lines = [
-        "| id | split | question | gold pages | cited pages | cited chunks | cause |",
-        "| --- | --- | --- | --- | --- | --- | --- |",
+        "| id | split | question | gold pages | cited pages | cited per chunk | chunk spans"
+        " | cause |",
+        "| --- | --- | --- | --- | --- | --- | --- | --- |",
     ]
     for f in failures:
-        chunks = " ".join("[" + ",".join(map(str, c)) + "]" for c in f["cited_chunks"]) or "-"
         lines.append(
             f"| {f['id']} | {f['split']} | {_cell(f['question'])} | "
             f"{','.join(map(str, f['gold_pages']))} | "
-            f"{','.join(map(str, f['cited_pages'])) or '-'} | {chunks} | {f['reason']} |"
+            f"{','.join(map(str, f['cited_pages'])) or '-'} | {_groups(f['cited_chunks'])} | "
+            f"{_groups(f.get('chunk_spans', []))} | {f['reason']} |"
+        )
+    return lines
+
+
+def _groups(groups: list[list[int]]) -> str:
+    return " ".join("[" + ",".join(map(str, g)) + "]" for g in groups) or "-"
+
+
+def _refusal_failure_lines(failures: list[dict]) -> list[str]:
+    lines = [
+        "| id | split | question | top score | confidence | cited | answer |",
+        "| --- | --- | --- | --- | --- | --- | --- |",
+    ]
+    for f in failures:
+        lines.append(
+            f"| {f['id']} | {f['split']} | {_cell(f['question'])} | {f['top_score']:.3f} | "
+            f"{f['confidence']:.2f} | {','.join(map(str, f['cited_pages'])) or '-'} | "
+            f"{_cell(f['answer'], 200)} |"
+        )
+    return lines
+
+
+def _answer_failure_lines(failures: list[dict]) -> list[str]:
+    lines = [
+        "| id | split | question | top score | outcome | missing keywords | answer |",
+        "| --- | --- | --- | --- | --- | --- | --- |",
+    ]
+    for f in failures:
+        outcome = f"refused ({f['refused_by']})" if f["refused"] else "answered"
+        lines.append(
+            f"| {f['id']} | {f['split']} | {_cell(f['question'])} | {f['top_score']:.3f} | "
+            f"{outcome} | {_cell(', '.join(f['missing_keywords'])) or '-'} | "
+            f"{_cell(f['answer'], 200)} |"
         )
     return lines
 
@@ -528,6 +607,16 @@ def _dataset_section(report: dict, name: str) -> list[str]:
         lines += _failure_lines(failures)
     else:
         lines.append("None: every answered question cited only gold pages.")
+    refusals = data["refusal_failures"]
+    lines += ["", f"### Refusal failures at {t:.2f}: unanswerable questions answered", ""]
+    lines += _refusal_failure_lines(refusals) if refusals else ["None: every one was refused."]
+    answers = data["answer_failures"]
+    lines += ["", f"### Answer failures at {t:.2f}: strict check failed (both splits)", ""]
+    lines += (
+        _answer_failure_lines(answers)
+        if answers
+        else ["None: every answerable question passed the strict check."]
+    )
     lines += [
         "",
         f"### Every question at {t:.2f}",
@@ -618,7 +707,25 @@ def print_report(report: dict, out=None) -> None:
         for f in failures:
             print(
                 f"  {f['id']} [{f['split']}] {f['question']!r}: gold {f['gold_pages']}, "
-                f"cited {f['cited_pages']} (chunks {f['cited_chunks']}) -> {f['reason']}",
+                f"cited {f['cited_pages']} (per chunk {f['cited_chunks']}, chunk spans "
+                f"{f.get('chunk_spans', [])}) -> {f['reason']}",
+                file=out,
+            )
+        refusals = data["refusal_failures"]
+        print(f"Refusal failures ({len(refusals)}):", file=out)
+        for f in refusals:
+            print(
+                f"  {f['id']} [{f['split']}] {f['question']!r}: answered with confidence "
+                f"{f['confidence']:.2f} (top score {f['top_score']:.3f}): {f['answer']!r}",
+                file=out,
+            )
+        answers = data["answer_failures"]
+        print(f"Answer failures ({len(answers)}):", file=out)
+        for f in answers:
+            outcome = f"refused by {f['refused_by']}" if f["refused"] else "answered"
+            print(
+                f"  {f['id']} [{f['split']}] {f['question']!r}: {outcome}, top score "
+                f"{f['top_score']:.3f}, missing {f['missing_keywords']}: {f['answer']!r}",
                 file=out,
             )
         print(file=out)
