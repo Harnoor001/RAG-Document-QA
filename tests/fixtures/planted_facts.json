@@ -1,0 +1,215 @@
+{
+  "pdf": "handbook.pdf",
+  "title": "Acme Store Employee Handbook",
+  "pages": 42,
+  "facts": [
+    {
+      "id": "store_hours",
+      "pages": [
+        3
+      ],
+      "kind": "text",
+      "text": "The store is open from 9 AM to 9 PM, Monday through Saturday.",
+      "keywords": [
+        "9 AM",
+        "9 PM",
+        "Monday",
+        "Saturday"
+      ]
+    },
+    {
+      "id": "refund_policy",
+      "pages": [
+        12
+      ],
+      "kind": "text",
+      "text": "Refunds are accepted within 30 days of purchase as long as the item is unused.",
+      "keywords": [
+        "30 days",
+        "unused"
+      ]
+    },
+    {
+      "id": "employee_discount",
+      "pages": [
+        18
+      ],
+      "kind": "text",
+      "text": "All employees receive a 15% discount on regular-priced merchandise.",
+      "keywords": [
+        "15%"
+      ]
+    },
+    {
+      "id": "warranty_claim",
+      "pages": [
+        20,
+        21
+      ],
+      "kind": "text",
+      "text": "To file a warranty claim, an employee must first collect the original receipt and then submit form WC-2 to the Customer Service Desk within 14 days of the fault being reported.",
+      "keywords": [
+        "WC-2",
+        "14 days",
+        "receipt"
+      ]
+    },
+    {
+      "id": "shift_allowances",
+      "pages": [
+        27
+      ],
+      "kind": "table",
+      "text": "Shift allowance table: Early morning | 5 AM - 9 AM | $2.50 per hour; Evening | 6 PM - 10 PM | $1.75 per hour; Overnight | 10 PM - 5 AM | $4.00 per hour; Sunday | All day | $3.00 per hour; Public holiday | All day | 1.5x base pay",
+      "keywords": [
+        "$4.00",
+        "Overnight"
+      ]
+    },
+    {
+      "id": "blank_page",
+      "pages": [
+        33
+      ],
+      "kind": "near_empty",
+      "text": "Notes",
+      "keywords": []
+    },
+    {
+      "id": "data_retention",
+      "pages": [
+        40
+      ],
+      "kind": "text",
+      "text": "Employee records are retained for 7 years after the end of employment.",
+      "keywords": [
+        "7 years"
+      ]
+    },
+    {
+      "id": "probation",
+      "pages": [
+        6
+      ],
+      "kind": "text",
+      "text": "New employees complete a probation period of 90 days.",
+      "keywords": [
+        "90 days"
+      ]
+    },
+    {
+      "id": "dress_code",
+      "pages": [
+        8
+      ],
+      "kind": "text",
+      "text": "Staff must wear the navy Acme polo shirt and closed-toe shoes on the sales floor.",
+      "keywords": [
+        "navy",
+        "closed-toe"
+      ]
+    },
+    {
+      "id": "meal_break",
+      "pages": [
+        10
+      ],
+      "kind": "text",
+      "text": "Employees who work more than six hours receive an unpaid 30-minute meal break.",
+      "keywords": [
+        "30-minute",
+        "six hours"
+      ]
+    },
+    {
+      "id": "time_off_notice",
+      "pages": [
+        14
+      ],
+      "kind": "text",
+      "text": "Vacation requests must be submitted at least two weeks in advance.",
+      "keywords": [
+        "two weeks"
+      ]
+    },
+    {
+      "id": "overtime_rate",
+      "pages": [
+        16
+      ],
+      "kind": "text",
+      "text": "Overtime is paid at 1.5 times the base rate for hours worked beyond 40 hours in a week.",
+      "keywords": [
+        "1.5 times",
+        "40 hours"
+      ]
+    },
+    {
+      "id": "sick_days",
+      "pages": [
+        23
+      ],
+      "kind": "text",
+      "text": "Full-time employees receive eight paid sick days per calendar year.",
+      "keywords": [
+        "eight",
+        "sick days"
+      ]
+    },
+    {
+      "id": "incident_report",
+      "pages": [
+        25
+      ],
+      "kind": "text",
+      "text": "Any workplace injury must be reported to a manager within 24 hours.",
+      "keywords": [
+        "24 hours"
+      ]
+    },
+    {
+      "id": "lost_and_found",
+      "pages": [
+        29
+      ],
+      "kind": "text",
+      "text": "Items left in the lost and found are held for 60 days before being donated.",
+      "keywords": [
+        "60 days"
+      ]
+    },
+    {
+      "id": "cash_drawer",
+      "pages": [
+        31
+      ],
+      "kind": "text",
+      "text": "A cash drawer discrepancy of more than $5 must be reported to the shift lead.",
+      "keywords": [
+        "$5"
+      ]
+    },
+    {
+      "id": "training_hours",
+      "pages": [
+        35
+      ],
+      "kind": "text",
+      "text": "Every new hire completes 12 hours of paid training before working alone.",
+      "keywords": [
+        "12 hours"
+      ]
+    },
+    {
+      "id": "parking",
+      "pages": [
+        37
+      ],
+      "kind": "text",
+      "text": "Employees must park in Lot C behind the loading dock.",
+      "keywords": [
+        "Lot C"
+      ]
+    }
+  ]
+}
