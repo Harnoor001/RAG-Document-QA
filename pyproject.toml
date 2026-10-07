@@ -1,0 +1,40 @@
+[project]
+name = "rag-document-qa"
+version = "0.1.0"
+description = "Fully local PDF question answering with page citations, confidence scores and refusals."
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "pdfplumber>=0.11",
+    "faiss-cpu>=1.8",
+    "sentence-transformers>=3.0",
+    "numpy>=1.26",
+    "pydantic-settings>=2.3",
+    "reportlab>=4.0",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8", "pytest-cov>=5", "ruff>=0.6"]
+
+[build-system]
+requires = ["setuptools>=69"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+include = ["app*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+markers = ["integration: needs the real embedding model (slow, may download weights)"]
+addopts = "-ra"
+
+[tool.coverage.run]
+source = ["app/ingest", "app/index"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+extend-exclude = [".venv", "data"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP", "SIM"]
