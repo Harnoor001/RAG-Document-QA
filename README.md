@@ -21,13 +21,17 @@ flowchart LR
 
 ## Results
 
-Measured by `eval/run_eval.py` on the 40-question golden set (30 answerable, including
-multi-page, table and short/vague phrasings; 10 unanswerable). The table below is written by
-`python -m eval.run_eval --sweep --update-readme` from a real run; it is never edited by hand.
+Measured by `eval/run_eval.py` on the **test split of a real document's question set**
+(`eval/golden_real.jsonl`), with the confidence threshold tuned on the dev split only. The
+generated fixture's 40 questions are reported separately in `eval/results.md`; they show the
+pipeline works but are not the headline. The table below is written by
+`python -m eval.run_eval --sweep --real-pdf <your.pdf> --update-readme` from a real run; it is
+never edited by hand.
 
 <!-- eval:start -->
-Not measured yet. Run `.\run.ps1 eval` (or `make eval`) with Ollama running, then
-`python -m eval.run_eval --sweep --apply --update-readme` to fill this in.
+Not measured yet. With Ollama running and `eval/golden_real.jsonl` written, run
+`.\run.ps1 eval --real-pdf <your.pdf> --apply --update-readme` (or
+`make eval EVAL_ARGS="--real-pdf <your.pdf> --apply --update-readme"`) to fill this in.
 <!-- eval:end -->
 
 ## Quickstart (local)
@@ -48,7 +52,7 @@ downloads `all-MiniLM-L6-v2` (~90 MB); after that nothing leaves the machine.
 | `make run` | `.\run.ps1 run` | API + UI on `127.0.0.1:8000` |
 | `make test` | `.\run.ps1 test` | unit tests (offline, `HashEmbedder` + `FakeLLM`), 85% coverage gate |
 | `make test-int` | `.\run.ps1 test-int` | real MiniLM + Ollama tests; each skips with a reason when unavailable |
-| `make eval` | `.\run.ps1 eval` | golden-set evaluation with the threshold sweep |
+| `make eval` | `.\run.ps1 eval` | golden-set evaluation with the threshold sweep (extra flags: `EVAL_ARGS="..."` / after `eval`) |
 | `make lint` | `.\run.ps1 lint` | `ruff check` + `ruff format --check` |
 | `make docker-up` | `.\run.ps1 docker-up` | `docker compose up --build` |
 
@@ -56,7 +60,7 @@ Command-line tools work without the server:
 
 ```bash
 python -m app.ingest tests/fixtures/handbook.pdf
-# handbook.pdf · 42 pages · 165 chunks indexed · 8d9ae4a8c463
+# handbook.pdf · 42 pages · 144 chunks indexed · 8d9ae4a8c463
 python -m app.ask 8d9ae4a8c463 "What's the refund window?"
 ```
 
@@ -79,7 +83,7 @@ curl -s localhost:8000/health
 
 # upload a PDF: 201 when new, 200 when the same file is already indexed
 curl -s -F "file=@tests/fixtures/handbook.pdf" localhost:8000/documents
-# {"doc_id":"8d9ae4a8c463...","filename":"handbook.pdf","pages":42,"empty_pages":[33],"chunks":165,...}
+# {"doc_id":"8d9ae4a8c463...","filename":"handbook.pdf","pages":42,"empty_pages":[33],"chunks":144,...}
 
 # list, inspect (full id or the 12-character prefix), delete
 curl -s localhost:8000/documents
@@ -134,10 +138,14 @@ Every setting can be overridden with an environment variable (or a `.env` file).
   paragraphs rebuilt from line spacing, line-break hyphens removed. Pages with fewer than 20
   characters are flagged `is_empty` (no OCR). Non-PDF, corrupt and password-protected files
   raise `InvalidPDFError`.
-- **Chunker** (`app/ingest/chunker.py`): the pages are read as one continuous text so a sentence
-  that runs over a page break stays together. Each chunk ends at the strongest boundary that
+- **Chunker** (`app/ingest/chunker.py`): a page that ends with a finished sentence is a hard
+  boundary, so a chunk never mixes the end of one page with the start of the next and its
+  citation names only its own page. A page that ends mid-sentence is joined to the next page so
+  that sentence stays together. Each chunk ends at the strongest boundary that
   fits (paragraph, then sentence, then word) and never mid-word; the next chunk starts inside the
-  last `CHUNK_OVERLAP` characters. Each chunk lists every page it touches, e.g. `[20, 21]`.
+  last `CHUNK_OVERLAP` characters (overlap stays within a run of joined pages). Each chunk lists
+  every page it touches, e.g. `[20, 21]` for a sentence that runs from p.20 onto p.21. Indexes
+  built by an older chunker version are rebuilt automatically.
 - **Store** (`app/index/store.py`): one folder per document named by the SHA-256 of the file,
   holding `index.faiss` (`IndexFlatIP` over L2-normalised vectors, so scores are cosine
   similarity), `chunks.jsonl` and `manifest.json`. Writes go to a temp folder and are renamed
@@ -169,20 +177,36 @@ is set automatically so loading it makes no network calls (an explicit `HF_HUB_O
 
 ## Evaluation
 
-`python -m eval.run_eval --sweep` ingests the fixture, asks all 40 golden questions once with
-the confidence gate off, then computes, for every threshold from 0.20 to 0.60 in 0.05 steps:
+Two question sets, reported separately:
+
+- **Fixture** (`eval/golden.jsonl`, 40 questions on the generated handbook): 30 answerable,
+  including multi-page, table and short/vague phrasings, and 10 unanswerable.
+- **Real** (`eval/golden_real.jsonl` on a PDF you pass with `--real-pdf`): your own questions on
+  your own document. Same format; see `eval/golden_real.example.jsonl`. This set gives the
+  headline number, and `--update-readme` refuses to run without it.
+
+Each question has `"split": "dev"` or `"test"` (questions without one alternate dev/test within
+answerable and unanswerable). `python -m eval.run_eval --sweep` asks every question once with the
+confidence gate off. The gate only looks at the top score, so each threshold's outcome is
+computed exactly from that one run. The threshold is chosen on **dev questions only** (both
+sets): the best (strict answer accuracy + refusal accuracy) / 2 from 0.20 to 0.60, ties going to
+the lower false-refusal rate. A pick below 0.25 is only kept if it beats 0.25 on dev by at least
+5 points; `eval/results.md` explains the choice. Metrics are then reported on the **test**
+questions at that threshold, with dev alongside for reference:
 
 - **hit@5**: a gold page is in the top 5 retrieved chunks (answerable questions)
-- **answer accuracy**: not refused and every gold keyword present (`a|b` accepts either)
+- **answer accuracy, strict**: not refused and every gold keyword present (`a|b` accepts either);
+  **lenient**: at least one gold keyword; **strict with correct citations**: strict and every
+  cited page is a gold page
 - **refusal accuracy**: unanswerable questions that were refused
 - **false-refusal rate**: answerable questions that were refused
-- **citation precision**: answered questions whose cited pages are all gold pages
+- **citation precision, strict**: answered questions whose cited pages are all gold pages;
+  **per page**: the average share of cited pages that are gold. Every failing question is listed
+  with its gold pages, cited pages, the pages of each cited chunk and the cause.
 - **p50/p95 latency**, and the top retrieval score for answerable vs unanswerable questions
 
-The gate only looks at the top score, so each threshold's outcome is computed exactly from the
-one run. The best threshold maximises (answer accuracy + refusal accuracy) / 2, ties going to the
-lower false-refusal rate. `--apply` writes it into `app/config.py`; `--update-readme` refreshes
-the Results table. Full per-question output goes to `eval/results.md` and `eval/results.json`.
+`--apply` writes the chosen threshold into `app/config.py`. Full per-question output goes to
+`eval/results.md` and `eval/results.json`.
 
 ## Design decisions
 
@@ -195,8 +219,10 @@ the Results table. Full per-question output goes to `eval/results.md` and `eval/
   pages, drops invented ones, merges overlapping pages, and refuses answers with no valid citation.
 - **Prompt injection.** Document text is wrapped in `<context>` and the rules treat it as text;
   even if a model obeys injected text, an uncited answer is refused.
-- **Page-aware chunking.** Pages are chunked as one stream so sentences crossing a page break
-  stay whole, and each chunk records every page it touches.
+- **Page-aware chunking.** Chunks stop at page breaks unless a sentence runs across one, so
+  citations point at the page the answer is on. An earlier version chunked the document as one
+  stream; about half its chunks straddled two pages, so a correct answer often cited a
+  neighbouring page too (this was the cause of low citation precision, not the scoring).
 - **Fully local.** Embeddings, FAISS and the LLM run on the machine. `HF_HUB_OFFLINE=1` is set
   automatically once the embedding model is cached.
 

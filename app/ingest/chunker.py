@@ -1,9 +1,12 @@
 """pages -> overlapping chunks that remember which page(s) they came from.
 
-The document is treated as one continuous text so a sentence that runs over a page break stays
-in one chunk. Each chunk ends at the best boundary that fits in ``size`` characters, preferring
-a paragraph break, then a sentence end, then a space, so words are never cut. The next chunk
-starts at the first word inside the last ``overlap`` characters of the previous one.
+A page that ends with a finished sentence is a hard boundary: no chunk crosses it, so a chunk's
+page list (and therefore its citation) names only the page the text is on. A page that ends
+mid-sentence is joined to the next one, so that sentence stays whole in one chunk and the chunk
+honestly cites both pages. Within each run of pages, a chunk ends at the best boundary that fits
+in ``size`` characters, preferring a paragraph break, then a sentence end, then a space, so words
+are never cut. The next chunk starts at the first word inside the last ``overlap`` characters of
+the previous one.
 """
 
 from __future__ import annotations
@@ -32,55 +35,65 @@ class Chunk:
         return cls(**data)
 
 
+CHUNKER_VERSION = 2  # bump when chunk boundaries change so stored indexes are rebuilt
+
+
 def chunk_pages(
     pages: list[Page], size: int = 800, overlap: int = 150, doc_id: str = ""
 ) -> list[Chunk]:
     if size <= 0 or not 0 <= overlap < size:
         raise ValueError("need size > 0 and 0 <= overlap < size")
 
-    text, spans = _join_pages(pages)
-    if not text:
-        return []
-    breaks = _break_points(text)
-
     chunks: list[Chunk] = []
-    start = 0
-    while start < len(text):
-        end = len(text) if len(text) - start <= size else _choose_end(text, breaks, start, size)
-        body = text[start:end].strip()
-        touched = [n for n, s, e in spans if s < end and e > start]
-        first_page_start = next(s for n, s, e in spans if n == touched[0])
-        chunks.append(
-            Chunk(
-                id=f"{doc_id[:8]}-{len(chunks):04d}",
-                text=body,
-                pages=touched,
-                start_char=max(start - first_page_start, 0),
+    for text, spans in _segments(pages):
+        breaks = _break_points(text)
+        start = 0
+        while start < len(text):
+            end = len(text) if len(text) - start <= size else _choose_end(text, breaks, start, size)
+            body = text[start:end].strip()
+            touched = [n for n, s, e in spans if s < end and e > start]
+            first_page_start = next(s for n, s, e in spans if n == touched[0])
+            chunks.append(
+                Chunk(
+                    id=f"{doc_id[:8]}-{len(chunks):04d}",
+                    text=body,
+                    pages=touched,
+                    start_char=max(start - first_page_start, 0),
+                )
             )
-        )
-        if end >= len(text):
-            break
-        start = _next_start(text, start, end, overlap)
+            if end >= len(text):
+                break
+            start = _next_start(text, start, end, overlap)
     return chunks
 
 
-def _join_pages(pages: list[Page]) -> tuple[str, list[tuple[int, int, int]]]:
-    """Concatenate non-empty pages. A page that ends mid-sentence continues with a space."""
+def _segments(pages: list[Page]) -> list[tuple[str, list[tuple[int, int, int]]]]:
+    """Group non-empty pages into runs that must be chunked together.
+
+    A new run starts after every page whose text ends a sentence; a page that ends mid-sentence
+    continues into the next page with a space. Each run is returned as its text plus
+    ``(page_number, start, end)`` spans within that text.
+    """
+    segments: list[tuple[str, list[tuple[int, int, int]]]] = []
     parts: list[str] = []
     spans: list[tuple[int, int, int]] = []
     pos = 0
     for page in pages:
         if page.is_empty or not page.text.strip():
             continue
-        if parts:
-            sep = "\n\n" if _SENTENCE_END.search(parts[-1].rstrip()) else " "
-            parts.append(sep)
-            pos += len(sep)
         body = page.text.strip()
+        if parts:
+            parts.append(" ")
+            pos += 1
         spans.append((page.number, pos, pos + len(body)))
         parts.append(body)
         pos += len(body)
-    return "".join(parts), spans
+        if _SENTENCE_END.search(body):
+            segments.append(("".join(parts), spans))
+            parts, spans, pos = [], [], 0
+    if parts:
+        segments.append(("".join(parts), spans))
+    return segments
 
 
 def _break_points(text: str) -> dict[int, int]:

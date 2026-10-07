@@ -6,15 +6,17 @@ pytestmark = pytest.mark.integration
 
 
 def test_t3_13_eval_writes_results(ollama, minilm_store, handbook, tmp_path):
-    from eval.run_eval import run
+    from eval.run_eval import FLOOR, print_report, run
 
     store, _ = minilm_store
     report = run(store, ollama, pdf_path=handbook, out_dir=tmp_path, sweep=True)
     assert (tmp_path / "results.md").is_file() and (tmp_path / "results.json").is_file()
-    assert report["questions"] == {"total": 40, "answerable": 30}
-    best = report["best"]
-    print(
-        f"T3.13 threshold {best['threshold']:.2f}: hit@5 {best['hit_at_5']:.1%}, "
-        f"answer acc {best['answer_accuracy']:.1%}, refusal acc {best['refusal_accuracy']:.1%}, "
-        f"false refusals {best['false_refusal_rate']:.1%}"
-    )
+    fixture = report["datasets"]["fixture"]
+    assert fixture["questions"] == {
+        "dev": {"answerable": 15, "unanswerable": 5},
+        "test": {"answerable": 15, "unanswerable": 5},
+    }
+    t = report["threshold"]
+    assert t["source"] == "dev sweep" and t["dev_questions"] == 20
+    assert t["value"] >= FLOOR or t["dev_best_combined"] - t["floor_combined"] >= 0.05
+    print_report(report)

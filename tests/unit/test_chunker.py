@@ -1,4 +1,6 @@
+import json
 import re
+from pathlib import Path
 
 import pytest
 
@@ -6,6 +8,7 @@ from app.ingest.chunker import Chunk, chunk_pages
 from app.ingest.loader import Page
 
 SIZE, OVERLAP = 800, 150
+PLANTED = Path(__file__).parents[1] / "fixtures" / "planted_facts.json"
 
 
 @pytest.fixture(scope="module")
@@ -21,7 +24,10 @@ def test_t1_4_chunks_are_bounded_and_non_empty(chunks):
 
 
 def test_t1_5_consecutive_chunks_overlap(chunks):
-    for a, b in zip(chunks, chunks[1:], strict=False):
+    # overlap lives inside a run of pages; a sentence-ending page boundary starts afresh
+    pairs = [(a, b) for a, b in zip(chunks, chunks[1:], strict=False) if a.pages[-1] == b.pages[0]]
+    assert pairs
+    for a, b in pairs:
         shared = _longest_suffix_prefix(a.text, b.text)
         assert shared >= 40, (a.id, b.id)
         assert shared <= OVERLAP + 1
@@ -41,6 +47,32 @@ def test_t1_7_warranty_sentence_chunk_spans_pages_20_and_21(chunks):
     holding = [c for c in chunks if sentence in c.text.replace("\n", " ")]
     assert holding
     assert all(c.pages == [20, 21] for c in holding)
+
+
+def test_only_the_mid_sentence_page_break_is_crossed(chunks):
+    # every fixture page ends a sentence except p.20, which runs into p.21
+    assert {tuple(c.pages) for c in chunks if len(c.pages) > 1} == {(20, 21)}
+
+
+def test_planted_facts_sit_in_chunks_citing_exactly_their_pages(chunks):
+    facts = json.loads(PLANTED.read_text())["facts"]
+    for fact in facts:
+        if fact["kind"] != "text":
+            continue
+        needle = " ".join(fact["text"].split()[:8])
+        holding = [c for c in chunks if needle in " ".join(c.text.split())]
+        assert holding, fact["id"]
+        pages = [c.pages for c in holding]
+        assert all(p == fact["pages"] for p in pages), (fact["id"], pages)
+
+
+def test_sentence_ending_page_is_a_hard_boundary():
+    pages = [Page(1, "Page one ends here.", False), Page(2, "Page two starts.", False)]
+    chunks = chunk_pages(pages, 100, 10)
+    assert [(c.text, c.pages) for c in chunks] == [
+        ("Page one ends here.", [1]),
+        ("Page two starts.", [2]),
+    ]
 
 
 def test_t1_8_pages_are_valid_and_ordered(chunks):

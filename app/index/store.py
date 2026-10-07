@@ -21,7 +21,7 @@ import numpy as np
 
 from app.config import get_settings
 from app.index.embedder import Embedder
-from app.ingest.chunker import Chunk, chunk_pages
+from app.ingest.chunker import CHUNKER_VERSION, Chunk, chunk_pages
 from app.ingest.loader import load_pdf
 
 INDEX_FILE, CHUNKS_FILE, MANIFEST_FILE = "index.faiss", "chunks.jsonl", "manifest.json"
@@ -43,10 +43,11 @@ class Manifest:
     chunk_size: int
     overlap: int
     created_at: str
+    chunker_version: int = 1  # manifests written before the field existed came from version 1
 
     @classmethod
     def from_dict(cls, data: dict) -> Manifest:
-        return cls(**{k: data[k] for k in cls.__dataclass_fields__})
+        return cls(**{k: data[k] for k in cls.__dataclass_fields__ if k in data})
 
 
 @dataclass
@@ -130,6 +131,7 @@ class DocumentStore:
             chunk_size=self.chunk_size,
             overlap=self.overlap,
             created_at=datetime.now(UTC).isoformat(timespec="seconds"),
+            chunker_version=CHUNKER_VERSION,
         )
         self._write(manifest, chunks, index)
         self._cache[doc_id] = LoadedDocument(manifest, chunks, index)
@@ -140,6 +142,7 @@ class DocumentStore:
             manifest.embed_model == self.embedder.name
             and manifest.chunk_size == self.chunk_size
             and manifest.overlap == self.overlap
+            and manifest.chunker_version == CHUNKER_VERSION
             and all(
                 (self.data_dir / manifest.doc_id / f).is_file() for f in (INDEX_FILE, CHUNKS_FILE)
             )

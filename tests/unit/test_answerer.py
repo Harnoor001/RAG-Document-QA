@@ -56,7 +56,9 @@ def test_t2_6_citation_tag_becomes_page_number(indexed):
     assert "[p.12]" in result.answer and "[C1]" not in result.answer
     assert result.answer == "Within 30 days of purchase, if the item is unused [p.12]."
     assert result.citations[0].pages == [12]
-    assert "30 days" in result.citations[0].snippet
+    store, _ = indexed
+    cited = {c.id: c for c in store.load(doc_id).chunks}[result.citations[0].chunk_id]
+    assert REFUND in " ".join(cited.text.split())
     assert result.sources == 1 and result.model == "fake"
     assert result.latency_ms >= 0
     assert len(llm.calls) == 1
