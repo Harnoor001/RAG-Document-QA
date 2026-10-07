@@ -89,15 +89,20 @@ class OllamaLLM:
             f"Cannot reach Ollama at {self.url}. Start it with: ollama serve"
         ) from last_error
 
-    def is_available(self) -> bool:
-        """True when Ollama is reachable and the model is pulled."""
+    def probe(self) -> tuple[bool, bool]:
+        """(Ollama reachable, model pulled), using the cheap /api/tags listing."""
         try:
             response = self._client.get(f"{self.url}/api/tags", timeout=3)
             response.raise_for_status()
-        except httpx.HTTPError:
-            return False
-        names = {m.get("name", "") for m in response.json().get("models", [])}
-        return self.name in names or f"{self.name}:latest" in names
+            models = response.json().get("models", [])
+        except (httpx.HTTPError, ValueError):
+            return False, False
+        names = {m.get("name", "") for m in models}
+        return True, self.name in names or f"{self.name}:latest" in names
+
+    def is_available(self) -> bool:
+        """True when Ollama is reachable and the model is pulled."""
+        return all(self.probe())
 
 
 class FakeLLM:

@@ -19,6 +19,9 @@ class Settings(BaseSettings):
     ollama_keep_alive: str = "30m"  # how long Ollama keeps the model in memory after a call
     max_context_chars: int = 6000
 
+    max_upload_mb: int = 20
+    log_level: str = "INFO"
+
 
 def get_settings() -> Settings:
     """Read settings fresh from the environment (no caching, so env overrides apply immediately)."""

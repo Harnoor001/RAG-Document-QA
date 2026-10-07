@@ -1,0 +1,188 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>RAG Document QA</title>
+<style>
+  :root {
+    --bg: #0d1117; --panel: #161b22; --panel-2: #1f2630; --border: #2b3340;
+    --text: #e6edf3; --muted: #8b949e; --accent: #58a6ff;
+    --green: #2ea043; --green-bg: rgba(46,160,67,.15); --amber: #d29922; --amber-bg: rgba(210,153,34,.15);
+    --red: #f85149;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text);
+         font: 15px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+  main { max-width: 760px; margin: 0 auto; padding: 24px 16px 140px; }
+  h1 { font-size: 20px; margin: 0 0 4px; }
+  .sub { color: var(--muted); margin: 0 0 20px; font-size: 13px; }
+  .card { background: var(--panel); border: 1px solid var(--border); border-radius: 12px; padding: 14px 16px; }
+  .upload { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
+  .upload label { cursor: pointer; background: var(--panel-2); border: 1px dashed var(--border);
+                  border-radius: 8px; padding: 8px 14px; }
+  .upload input[type=file] { display: none; }
+  select { background: var(--panel-2); color: var(--text); border: 1px solid var(--border);
+           border-radius: 8px; padding: 7px 10px; max-width: 100%; }
+  .file { margin-top: 12px; display: flex; gap: 10px; align-items: center; }
+  .file .icon { width: 34px; height: 40px; border-radius: 6px; background: var(--red);
+                display: grid; place-items: center; font-size: 10px; font-weight: 700; }
+  .file .meta { color: var(--muted); font-size: 13px; }
+  #chat { margin-top: 20px; display: flex; flex-direction: column; gap: 14px; }
+  .msg { max-width: 88%; padding: 10px 14px; border-radius: 14px; white-space: pre-wrap; word-wrap: break-word; }
+  .user { align-self: flex-end; background: var(--accent); color: #0d1117; border-bottom-right-radius: 4px; }
+  .bot { align-self: flex-start; background: var(--panel); border: 1px solid var(--border); border-bottom-left-radius: 4px; }
+  .bot.error { border-color: var(--red); }
+  .chip { display: inline-block; background: rgba(88,166,255,.15); color: var(--accent);
+          border-radius: 6px; padding: 0 6px; font-size: 12px; font-weight: 600; margin: 0 2px; }
+  .foot { display: flex; gap: 10px; align-items: center; margin-top: 8px; font-size: 12px; color: var(--muted); flex-wrap: wrap; }
+  .pill { border-radius: 999px; padding: 1px 9px; font-weight: 600; }
+  .pill.ok { background: var(--green-bg); color: var(--green); }
+  .pill.refused { background: var(--amber-bg); color: var(--amber); }
+  form.ask { position: fixed; left: 0; right: 0; bottom: 0; background: linear-gradient(transparent, var(--bg) 30%);
+             padding: 24px 16px 18px; }
+  form.ask .row { max-width: 760px; margin: 0 auto; display: flex; gap: 8px; }
+  form.ask input { flex: 1; min-width: 0; background: var(--panel); color: var(--text); border: 1px solid var(--border);
+                   border-radius: 10px; padding: 12px 14px; font: inherit; }
+  button { background: var(--accent); color: #0d1117; border: 0; border-radius: 10px; padding: 0 18px;
+           font: inherit; font-weight: 600; cursor: pointer; }
+  button:disabled { opacity: .5; cursor: default; }
+  .status { color: var(--muted); font-size: 13px; }
+</style>
+</head>
+<body>
+<main>
+  <h1>RAG Document QA</h1>
+  <p class="sub">Answers come only from your PDF, with page citations. Everything runs locally.</p>
+
+  <section class="card">
+    <form id="upload-form" class="upload">
+      <label>Upload PDF<input id="file" name="file" type="file" accept="application/pdf,.pdf"></label>
+      <select id="docs" aria-label="Indexed documents"><option value="">No documents yet</option></select>
+      <span id="upload-status" class="status"></span>
+    </form>
+    <div id="file-card" class="file" hidden>
+      <div class="icon">PDF</div>
+      <div><div id="file-name"></div><div id="file-meta" class="meta"></div></div>
+    </div>
+  </section>
+
+  <section id="chat" aria-live="polite"></section>
+</main>
+
+<form id="ask-form" class="ask">
+  <div class="row">
+    <input id="question" maxlength="500" placeholder="Ask a question about the document" autocomplete="off">
+    <button id="ask-btn" type="submit" disabled>Ask</button>
+  </div>
+</form>
+
+<script>
+const $ = (id) => document.getElementById(id);
+let docs = [];
+
+function el(tag, cls, text) {
+  const node = document.createElement(tag);
+  if (cls) node.className = cls;
+  if (text !== undefined) node.textContent = text;
+  return node;
+}
+
+function showDoc(doc) {
+  $("file-card").hidden = !doc;
+  $("ask-btn").disabled = !doc;
+  if (!doc) return;
+  $("file-name").textContent = doc.filename;
+  $("file-meta").textContent = `${doc.pages} pages · ${doc.chunks} chunks indexed`;
+}
+
+async function loadDocs(selectId) {
+  const res = await fetch("/documents");
+  docs = await res.json();
+  const select = $("docs");
+  select.replaceChildren();
+  if (!docs.length) select.append(new Option("No documents yet", ""));
+  for (const d of docs) select.append(new Option(d.filename, d.doc_id));
+  if (selectId) select.value = selectId;
+  showDoc(docs.find((d) => d.doc_id === select.value));
+}
+
+$("docs").addEventListener("change", (e) => showDoc(docs.find((d) => d.doc_id === e.target.value)));
+
+$("file").addEventListener("change", async (e) => {
+  const file = e.target.files[0];
+  if (!file) return;
+  const body = new FormData();
+  body.append("file", file);
+  $("upload-status").textContent = "Indexing…";
+  try {
+    const res = await fetch("/documents", { method: "POST", body });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.detail || res.statusText);
+    $("upload-status").textContent = res.status === 200 ? "Already indexed" : "Indexed";
+    await loadDocs(data.doc_id);
+  } catch (err) {
+    $("upload-status").textContent = `Upload failed: ${err.message}`;
+  }
+  e.target.value = "";
+});
+
+// Turn "[p.12]" and "[p.20-21]" into chips; everything else stays plain text (no HTML injection).
+function renderAnswer(text) {
+  const frag = document.createDocumentFragment();
+  for (const part of text.split(/(\[p\.[^\]]+\])/)) {
+    if (/^\[p\.[^\]]+\]$/.test(part)) frag.append(el("span", "chip", part.slice(1, -1)));
+    else if (part) frag.append(document.createTextNode(part));
+  }
+  return frag;
+}
+
+function botMessage(data) {
+  const box = el("div", "msg bot");
+  box.append(renderAnswer(data.answer));
+  const foot = el("div", "foot");
+  // the real cosine score returned by the API, shown to 2 decimals
+  const pill = el("span", `pill ${data.refused ? "refused" : "ok"}`,
+                  `confidence ${data.confidence.toFixed(2)}`);
+  foot.append(pill);
+  const where = data.refused ? "not answered" : `${data.sources} source${data.sources === 1 ? "" : "s"} · local LLM`;
+  foot.append(el("span", "", where));
+  foot.append(el("span", "", `${(data.latency_ms / 1000).toFixed(1)} s`));
+  box.append(foot);
+  return box;
+}
+
+$("ask-form").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const question = $("question").value.trim();
+  const docId = $("docs").value;
+  if (!question || !docId) return;
+  $("chat").append(el("div", "msg user", question));
+  $("question").value = "";
+  $("ask-btn").disabled = true;
+  const pending = el("div", "msg bot status", "Thinking…");
+  $("chat").append(pending);
+  try {
+    const res = await fetch("/ask", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ doc_id: docId, question }),
+    });
+    const data = await res.json();
+    if (!res.ok) {
+      const detail = Array.isArray(data.detail) ? data.detail.map((d) => d.msg).join("; ") : data.detail;
+      throw new Error(detail || res.statusText);
+    }
+    pending.replaceWith(botMessage(data));
+  } catch (err) {
+    pending.replaceWith(el("div", "msg bot error", err.message));
+  } finally {
+    $("ask-btn").disabled = !$("docs").value;
+    window.scrollTo(0, document.body.scrollHeight);
+  }
+});
+
+loadDocs();
+</script>
+</body>
+</html>

@@ -1,0 +1,40 @@
+{"id": "hours-direct", "question": "What are the store's opening hours?", "gold_pages": [3], "gold_keywords": ["9 AM", "9 PM"], "kind": "direct"}
+{"id": "hours-saturday", "question": "Is the store open on Saturdays?", "gold_pages": [3], "gold_keywords": ["Saturday"], "kind": "paraphrase"}
+{"id": "refund-window", "question": "What's the refund window?", "gold_pages": [12], "gold_keywords": ["30 days"], "kind": "direct"}
+{"id": "refund-used", "question": "Can a customer get a refund for an item they have already used?", "gold_pages": [12], "gold_keywords": ["unused"], "kind": "paraphrase"}
+{"id": "refund-vague", "question": "refund policy?", "gold_pages": [12], "gold_keywords": ["30 days"], "kind": "vague"}
+{"id": "discount-direct", "question": "How much discount do employees get?", "gold_pages": [18], "gold_keywords": ["15%"], "kind": "direct"}
+{"id": "discount-vague", "question": "staff discount", "gold_pages": [18], "gold_keywords": ["15%"], "kind": "vague"}
+{"id": "warranty-how", "question": "How do I file a warranty claim?", "gold_pages": [20, 21], "gold_keywords": ["WC-2"], "kind": "multi_page"}
+{"id": "warranty-where", "question": "Where do warranty claim forms go, and by when?", "gold_pages": [20, 21], "gold_keywords": ["Customer Service Desk", "14 days"], "kind": "multi_page"}
+{"id": "warranty-receipt", "question": "What do I need to collect before making a warranty claim?", "gold_pages": [20, 21], "gold_keywords": ["receipt"], "kind": "multi_page"}
+{"id": "allowance-overnight", "question": "What is the allowance for overnight shifts?", "gold_pages": [27], "gold_keywords": ["$4"], "kind": "table"}
+{"id": "allowance-early", "question": "How much extra is paid for early morning shifts?", "gold_pages": [27], "gold_keywords": ["$2.50"], "kind": "table"}
+{"id": "allowance-sunday", "question": "What is the Sunday shift allowance?", "gold_pages": [27], "gold_keywords": ["$3"], "kind": "table"}
+{"id": "allowance-holiday", "question": "How are public holiday shifts paid?", "gold_pages": [27], "gold_keywords": ["1.5x|1.5 times|time and a half"], "kind": "table"}
+{"id": "retention-direct", "question": "How long are employee records kept after someone leaves?", "gold_pages": [40], "gold_keywords": ["7 years|seven years"], "kind": "direct"}
+{"id": "retention-vague", "question": "data retention", "gold_pages": [40], "gold_keywords": ["7 years|seven years"], "kind": "vague"}
+{"id": "probation", "question": "How long is the probation period for new employees?", "gold_pages": [6], "gold_keywords": ["90 days"], "kind": "direct"}
+{"id": "dress-floor", "question": "What should staff wear on the sales floor?", "gold_pages": [8], "gold_keywords": ["navy"], "kind": "paraphrase"}
+{"id": "dress-vague", "question": "dress code", "gold_pages": [8], "gold_keywords": ["polo"], "kind": "vague"}
+{"id": "meal-break", "question": "How long is the meal break on a long shift?", "gold_pages": [10], "gold_keywords": ["30"], "kind": "paraphrase"}
+{"id": "vacation-notice", "question": "How far in advance must vacation be requested?", "gold_pages": [14], "gold_keywords": ["two weeks|2 weeks"], "kind": "direct"}
+{"id": "overtime-rate", "question": "What is the overtime pay rate?", "gold_pages": [16], "gold_keywords": ["1.5"], "kind": "direct"}
+{"id": "overtime-vague", "question": "give key points about overtime", "gold_pages": [16], "gold_keywords": ["1.5"], "kind": "vague"}
+{"id": "sick-days", "question": "How many paid sick days do full-time employees get each year?", "gold_pages": [23], "gold_keywords": ["eight|8"], "kind": "direct"}
+{"id": "injury-report", "question": "How soon must a workplace injury be reported?", "gold_pages": [25], "gold_keywords": ["24 hours"], "kind": "direct"}
+{"id": "lost-found", "question": "What happens to items left in the lost and found?", "gold_pages": [29], "gold_keywords": ["60 days"], "kind": "paraphrase"}
+{"id": "cash-drawer", "question": "When does a cash drawer discrepancy have to be reported?", "gold_pages": [31], "gold_keywords": ["$5"], "kind": "paraphrase"}
+{"id": "training", "question": "How much training do new hires get before working alone?", "gold_pages": [35], "gold_keywords": ["12 hours"], "kind": "direct"}
+{"id": "parking", "question": "Where should employees park?", "gold_pages": [37], "gold_keywords": ["Lot C"], "kind": "direct"}
+{"id": "hours-close", "question": "What time does the store close?", "gold_pages": [3], "gold_keywords": ["9 PM"], "kind": "paraphrase"}
+{"id": "u-worldcup", "question": "Who won the 2018 FIFA World Cup?", "unanswerable": true, "kind": "unanswerable"}
+{"id": "u-ceo-salary", "question": "What is the CEO's salary?", "unanswerable": true, "kind": "unanswerable"}
+{"id": "u-401k", "question": "What is the 401(k) employer match?", "unanswerable": true, "kind": "unanswerable"}
+{"id": "u-pets", "question": "Are employees allowed to bring pets to the store?", "unanswerable": true, "kind": "unanswerable"}
+{"id": "u-stock", "question": "What is Acme's current stock price?", "unanswerable": true, "kind": "unanswerable"}
+{"id": "u-wifi", "question": "What is the guest Wi-Fi password?", "unanswerable": true, "kind": "unanswerable"}
+{"id": "u-parental", "question": "How many weeks of parental leave do employees get?", "unanswerable": true, "kind": "unanswerable"}
+{"id": "u-paris", "question": "What is the address of the Paris store?", "unanswerable": true, "kind": "unanswerable"}
+{"id": "u-capital", "question": "What is the capital of Australia?", "unanswerable": true, "kind": "unanswerable"}
+{"id": "u-headcount", "question": "How many people does Acme employ in total?", "unanswerable": true, "kind": "unanswerable"}
