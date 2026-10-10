@@ -12,12 +12,15 @@ class Settings(BaseSettings):
     data_dir: str = "data/indexes"
 
     top_k: int = 5
-    confidence_threshold: float = 0.35
+    confidence_threshold: float = 0.25
     ollama_url: str = "http://localhost:11434"
     llm_model: str = "llama3.2:3b"
     llm_timeout_s: float = 60.0
     ollama_keep_alive: str = "30m"  # how long Ollama keeps the model in memory after a call
     max_context_chars: int = 6000
+
+    max_upload_mb: int = 20
+    log_level: str = "INFO"
 
 
 def get_settings() -> Settings:

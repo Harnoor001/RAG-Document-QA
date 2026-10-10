@@ -12,6 +12,9 @@ dependencies = [
     "pydantic-settings>=2.3",
     "reportlab>=4.0",
     "httpx>=0.27",
+    "fastapi>=0.115",
+    "uvicorn>=0.30",
+    "python-multipart>=0.0.9",
 ]
 
 [project.optional-dependencies]
@@ -24,6 +27,9 @@ build-backend = "setuptools.build_meta"
 [tool.setuptools.packages.find]
 include = ["app*"]
 
+[tool.setuptools.package-data]
+app = ["static/*.html"]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 markers = [
@@ -32,7 +38,7 @@ markers = [
 addopts = "-ra"
 
 [tool.coverage.run]
-source = ["app"]
+source = ["app", "eval"]
 # sys.monitoring keeps the suite under 10 s on 3.12+; 3.11 warns and uses the default core
 core = "sysmon"
 

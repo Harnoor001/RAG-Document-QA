@@ -6,6 +6,7 @@ import pytest
 from app.config import Settings
 from app.index.embedder import HashEmbedder
 from app.index.store import DocumentNotFoundError, DocumentStore, file_sha256
+from app.ingest.chunker import CHUNKER_VERSION
 
 
 class CountingEmbedder(HashEmbedder):
@@ -56,6 +57,17 @@ def test_reingest_with_different_settings_rebuilds(store, handbook):
     second = other.ingest(handbook)
     assert second.doc_id == first.doc_id
     assert second.chunks > first.chunks
+    assert store.embedder.calls == 2
+
+
+def test_index_from_older_chunker_is_rebuilt(store, handbook):
+    first = store.ingest(handbook)
+    path = store.data_dir / first.doc_id / "manifest.json"
+    old = json.loads(path.read_text())
+    del old["chunker_version"]  # what a pre-version manifest looks like
+    path.write_text(json.dumps(old))
+    fresh = DocumentStore(store.data_dir, store.embedder)
+    assert fresh.ingest(handbook).chunker_version == CHUNKER_VERSION
     assert store.embedder.calls == 2
 
 

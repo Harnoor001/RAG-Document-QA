@@ -1,0 +1,4 @@
+{"id": "r-example-direct", "question": "What is the notice period for resigning?", "gold_pages": [7], "gold_keywords": ["four weeks|4 weeks"], "kind": "direct", "split": "dev"}
+{"id": "r-example-vague", "question": "notice period?", "gold_pages": [7], "gold_keywords": ["four weeks|4 weeks"], "kind": "vague", "split": "test"}
+{"id": "r-example-multi", "question": "Who approves expenses above the limit, and what is the limit?", "gold_pages": [11, 12], "gold_keywords": ["finance director", "$500"], "kind": "multi_page", "split": "test"}
+{"id": "r-example-unanswerable", "question": "What was the company's revenue in 2019?", "unanswerable": true, "kind": "unanswerable", "split": "dev"}

@@ -95,6 +95,9 @@ def test_is_available_checks_model_list():
         raise httpx.ConnectError("refused", request=request)
 
     assert not OllamaLLM(client=client_for(down)).is_available()
+    assert OllamaLLM(client=client_for(down)).probe() == (False, False)
+    garbage = client_for(lambda request: httpx.Response(200, text="not json"))
+    assert OllamaLLM(client=garbage).probe() == (False, False)
 
 
 def test_settings_drive_defaults(monkeypatch):

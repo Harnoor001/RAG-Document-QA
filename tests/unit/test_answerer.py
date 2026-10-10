@@ -19,7 +19,7 @@ def indexed(tmp_path_factory, handbook):
 
 
 # HashEmbedder scores are lower than MiniLM's (the verbatim refund sentence scores ~0.34), so
-# tests that are not about the gate use a lower threshold. T2.5 uses the real default, 0.35.
+# tests that are not about the gate use a lower threshold. T2.5 uses 0.35.
 def make(indexed, llm, threshold=0.25):
     store, doc_id = indexed
     return Answerer(Retriever(store, top_k=5), llm, threshold=threshold), doc_id
@@ -56,7 +56,9 @@ def test_t2_6_citation_tag_becomes_page_number(indexed):
     assert "[p.12]" in result.answer and "[C1]" not in result.answer
     assert result.answer == "Within 30 days of purchase, if the item is unused [p.12]."
     assert result.citations[0].pages == [12]
-    assert "30 days" in result.citations[0].snippet
+    store, _ = indexed
+    cited = {c.id: c for c in store.load(doc_id).chunks}[result.citations[0].chunk_id]
+    assert REFUND in " ".join(cited.text.split())
     assert result.sources == 1 and result.model == "fake"
     assert result.latency_ms >= 0
     assert len(llm.calls) == 1
@@ -210,3 +212,78 @@ def test_ollama_model_load_counts_as_load_time():
     result = stub_answerer(llm, hits).answer("doc", "q")
     # the reported 200 ms load is counted, capped at the (tiny) wall-clock total of a fake call
     assert result.load_ms == result.latency_ms and result.answer_ms == 0
+
+
+SPANNING = Chunk(
+    "d-0",
+    "Senators serve for six years. Each state elects two senators. "
+    "Representatives serve for two years and are chosen by the people.",
+    [5, 6],
+    page_starts=[0, 62],  # p.6 starts at "Representatives"
+)
+
+
+@pytest.mark.parametrize(
+    ("reply", "expected_pages"),
+    [
+        ("Senators serve for six years [C1].", [5]),
+        ("Representatives are chosen by the people every two years [C1].", [6]),
+        ("Senators serve six years and representatives two years [C1].", [5, 6]),
+        ("Yes [C1].", [5, 6]),  # nothing to match: keep every page of the chunk
+    ],
+)
+def test_multi_page_chunk_cites_only_the_page_with_the_supporting_text(reply, expected_pages):
+    result = stub_answerer(FakeLLM(reply), [(SPANNING, 0.8)]).answer("doc", "q")
+    assert result.citations[0].pages == expected_pages
+    assert result.citations[0].chunk_pages == [5, 6]
+    assert f"[p.{'-'.join(map(str, expected_pages))}]" in result.answer
+
+
+def test_sentence_crossing_the_page_break_cites_both_pages(indexed):
+    reply = "Collect the original receipt and then submit form WC-2 [C1]."
+    answerer, doc_id = make(indexed, FakeLLM(reply))
+    result = answerer.answer(doc_id, WARRANTY)
+    assert result.citations[0].pages == [20, 21] and "[p.20-21]" in result.answer
+
+
+def test_chunk_without_page_offsets_keeps_all_pages():
+    old = Chunk("d-0", SPANNING.text, [5, 6])  # stored by an older chunker
+    reply = "Senators serve for six years [C1]."
+    result = stub_answerer(FakeLLM(reply), [(old, 0.8)]).answer("doc", "q")
+    assert result.citations[0].pages == [5, 6]
+
+
+def test_cited_chunk_with_no_overlap_is_dropped():
+    hits = [
+        (Chunk("d-0", "The Senate shall have the sole power to try all impeachments.", [7]), 0.8),
+        (Chunk("d-1", "Congress may lay and collect taxes on imports.", [9]), 0.7),
+    ]
+    reply = "The Senate has the sole power to try impeachments [C1][C2]."
+    result = stub_answerer(FakeLLM(reply), hits).answer("doc", "q")
+    assert result.answer == "The Senate has the sole power to try impeachments [p.7]."
+    assert [c.chunk_id for c in result.citations] == ["d-0"] and result.sources == 1
+
+
+def test_weak_overlap_extra_chunk_is_dropped_but_partial_support_is_kept():
+    hits = [
+        (Chunk("d-0", "Appropriations for raising armies shall not exceed two years.", [8]), 0.8),
+        (Chunk("d-1", "Congress shall provide for organizing the militia.", [8]), 0.7),
+        (
+            Chunk("d-2", "No appropriation of money for armies runs longer than two years.", [9]),
+            0.6,
+        ),
+    ]
+    reply = "Appropriations for armies cannot exceed two years [C1][C2][C3]."
+    result = stub_answerer(FakeLLM(reply), hits).answer("doc", "q")
+    assert [c.chunk_id for c in result.citations] == ["d-0", "d-2"]
+    assert result.answer == "Appropriations for armies cannot exceed two years [p.8][p.9]."
+
+
+def test_claim_without_overlap_falls_back_to_the_whole_answer():
+    hits = [
+        (Chunk("d-0", "Amendments are ratified by three fourths of the states.", [5]), 0.8),
+        (Chunk("d-1", "The President shall be commander in chief.", [4]), 0.7),
+    ]
+    reply = "Three fourths of the states must ratify an amendment. Yes [C1][C2]."
+    result = stub_answerer(FakeLLM(reply), hits).answer("doc", "q")
+    assert [c.chunk_id for c in result.citations] == ["d-0"]

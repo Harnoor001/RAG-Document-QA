@@ -24,6 +24,7 @@ class Citation:
     pages: list[int]
     score: float
     snippet: str
+    chunk_pages: list[int] = field(default_factory=list)  # every page the cited chunk spans
 
 
 @dataclass
@@ -70,17 +71,18 @@ class Answerer:
 
         citations = [
             Citation(
-                chunk_id=item.chunk.id,
-                pages=list(item.chunk.pages),
-                score=round(item.score, 4),
-                snippet=_snippet(item.chunk.text),
+                chunk_id=c.item.chunk.id,
+                pages=sorted(c.pages),
+                score=round(c.item.score, 4),
+                snippet=_snippet(c.item.chunk.text),
+                chunk_pages=list(c.item.chunk.pages),
             )
-            for item in cited
+            for c in cited
         ]
         return Answer(
             answer=text,
             citations=citations,
-            confidence=round(max(item.score for item in cited), 2),
+            confidence=round(max(c.item.score for c in cited), 2),
             sources=len(citations),
             refused=False,
             grounded=True,
@@ -114,30 +116,204 @@ class _Timer:
         }
 
 
-def _resolve_citations(raw: str, chunks: list[ScoredChunk]) -> tuple[str, list[ScoredChunk]]:
+def _resolve_citations(raw: str, chunks: list[ScoredChunk]) -> tuple[str, list[_Cited]]:
     """Rewrite [C#] tags as [p.N]; drop tags that point outside the retrieved set.
+
+    Each tag run is checked against the claim it follows (the text since the previous run):
+
+    - A cited chunk the claim has no real overlap with is dropped, when another chunk in the
+      same run clearly supports the claim (see ``_supporting``).
+    - A cited chunk that spans pages is cited only for the page(s) holding the sentences that
+      match the claim (see ``_supporting_pages``).
 
     Adjacent tags are rendered together, and their pages are merged when they overlap, so
     chunks on pages [1, 2] and [1] cited side by side read "[p.1-2]", not "[p.1-2][p.1]".
     """
-    cited: list[ScoredChunk] = []
-
-    def replace(match: re.Match) -> str:
-        page_sets: list[set[int]] = []
+    whole = _TAG_RUN.sub(" ", raw)
+    cited: dict[str, _Cited] = {}
+    parts: list[str] = []
+    prev = 0
+    for match in _TAG_RUN.finditer(raw):
+        claim = raw[prev : match.start()]
+        parts.append(claim)
+        prev = match.end()
+        run: list[ScoredChunk] = []
         for number in _TAG_NUMBER.findall(match.group(0)):
             index = int(number) - 1
-            if not 0 <= index < len(chunks):
-                continue  # hallucinated block number
-            item = chunks[index]
-            if item not in cited:
-                cited.append(item)
-            page_sets.append(set(item.chunk.pages))
-        return "".join(f"[p.{format_pages(sorted(p))}]" for p in _merge_overlapping(page_sets))
-
-    text = _TAG_RUN.sub(replace, raw)
+            if 0 <= index < len(chunks) and chunks[index] not in run:
+                run.append(chunks[index])  # out-of-range numbers are hallucinated blocks
+        page_sets: list[set[int]] = []
+        for item in _supporting(claim, run, whole):
+            pages = _supporting_pages(claim, item.chunk)
+            entry = cited.setdefault(item.chunk.id, _Cited(item, set()))
+            entry.pages |= pages
+            page_sets.append(pages)
+        parts.append(
+            "".join(f"[p.{format_pages(sorted(p))}]" for p in _merge_overlapping(page_sets))
+        )
+    parts.append(raw[prev:])
+    text = "".join(parts)
     text = re.sub(r"(\[p\.[^\]]+\])(?:\1)+", r"\1", text)  # [p.12][p.12] -> [p.12]
     text = _SPACE_BEFORE_PUNCT.sub(r"\1", re.sub(r"[ \t]{2,}", " ", text)).strip()
-    return text, cited
+    return text, list(cited.values())
+
+
+@dataclass
+class _Cited:
+    item: ScoredChunk
+    pages: set[int]
+
+
+_STOPWORDS = frozenset(
+    [
+        "the",
+        "and",
+        "for",
+        "are",
+        "was",
+        "were",
+        "with",
+        "that",
+        "this",
+        "from",
+        "have",
+        "has",
+        "had",
+        "not",
+        "but",
+        "any",
+        "all",
+        "can",
+        "may",
+        "shall",
+        "will",
+        "would",
+        "should",
+        "could",
+        "been",
+        "being",
+        "its",
+        "their",
+        "them",
+        "they",
+        "there",
+        "then",
+        "than",
+        "which",
+        "who",
+        "whom",
+        "whose",
+        "what",
+        "when",
+        "where",
+        "how",
+        "why",
+        "into",
+        "onto",
+        "upon",
+        "such",
+        "each",
+        "other",
+        "these",
+        "those",
+        "also",
+        "only",
+        "more",
+        "most",
+        "some",
+        "per",
+        "our",
+        "your",
+        "his",
+        "her",
+        "its",
+        "out",
+        "under",
+        "over",
+        "about",
+        "after",
+        "before",
+        "between",
+        "does",
+        "did",
+        "done",
+        "must",
+        "very",
+        "just",
+    ]
+)
+_WORD = re.compile(r"[a-z0-9]+")
+_SENTENCE_SPLIT = re.compile(r"(?<=[.!?;:])\s+|\n+")
+
+
+def _terms(text: str) -> set[str]:
+    """Content words, crudely stemmed by truncation so "ratified" matches "ratification"."""
+    words = _WORD.findall(text.lower())
+    return {
+        w if w.isdigit() else w[:6]
+        for w in words
+        if w not in _STOPWORDS and (len(w) >= 3 or w.isdigit())
+    }
+
+
+def _supporting(claim: str, run: list[ScoredChunk], whole: str) -> list[ScoredChunk]:
+    """Chunks in one tag run that actually support the claim before it.
+
+    A chunk is dropped when it shares no content word with the claim, or fewer than half as
+    many as the best-matching chunk in the run. When no chunk in the run overlaps the claim
+    (say the tag sits after a one-word sentence), the whole answer is used as the claim. If
+    nothing overlaps even then there is no evidence to choose by, so every cited chunk is kept.
+    """
+    for text in (claim, whole):
+        claim_terms = _terms(text)
+        shared = [len(claim_terms & _terms(item.chunk.text)) for item in run]
+        best = max(shared, default=0)
+        if best > 0:
+            break
+    else:
+        return run
+    return [item for item, n in zip(run, shared, strict=True) if n > 0 and n >= best / 2]
+
+
+def _supporting_pages(claim: str, chunk) -> set[int]:
+    """The page(s) of ``chunk`` holding the sentences that support the claim.
+
+    The chunk sentence sharing the most content words with the claim is taken first; further
+    sentences are added only while each brings at least two claim words not yet covered, so a
+    claim that combines facts from both pages cites both, and a passing shared word does not.
+    A sentence that runs over a page break counts for both pages. Chunks without page offsets
+    (indexes built before they existed) keep all their pages.
+    """
+    pages = list(chunk.pages)
+    starts = list(getattr(chunk, "page_starts", []) or [])
+    if len(pages) < 2 or len(starts) != len(pages):
+        return set(pages)
+    claim_terms = _terms(claim)
+    sentences = []  # (start, end, claim terms in the sentence)
+    pos = 0
+    for piece in _SENTENCE_SPLIT.split(chunk.text):
+        begin = chunk.text.find(piece, pos)
+        pos = begin + len(piece)
+        if piece.strip():
+            sentences.append((begin, pos, claim_terms & _terms(piece)))
+    covered: set[str] = set()
+    picked = []
+    while True:
+        best = max(sentences, key=lambda x: len(x[2] - covered), default=None)
+        gain = len(best[2] - covered) if best else 0
+        if gain == 0 or (picked and gain < 2):
+            break
+        picked.append(best)
+        covered |= best[2]
+    if not picked:
+        return set(pages)
+    bounds = [*starts[1:], len(chunk.text) + 1]
+    return {
+        page
+        for begin, end, _ in picked
+        for page, lo, hi in zip(pages, starts, bounds, strict=True)
+        if begin < hi and end > lo
+    }
 
 
 def _merge_overlapping(page_sets: list[set[int]]) -> list[set[int]]:

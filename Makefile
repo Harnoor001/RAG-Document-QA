@@ -1,7 +1,9 @@
 PY ?= .venv/bin/python
+# extra eval flags, e.g. make eval EVAL_ARGS="--real-pdf mydoc.pdf"
+EVAL_ARGS ?=
 FIXTURE = tests/fixtures/handbook.pdf
 
-.PHONY: install test test-int lint format fixture ingest clean
+.PHONY: install test test-int lint format fixture ingest run eval docker-up clean
 
 install:
 	python3 -m venv .venv
@@ -26,6 +28,15 @@ fixture:
 
 ingest:
 	$(PY) -m app.ingest $(FIXTURE)
+
+run:
+	$(PY) -m uvicorn app.api.main:app --host 127.0.0.1 --port 8000
+
+eval:
+	$(PY) -m eval.run_eval --sweep $(EVAL_ARGS)
+
+docker-up:
+	docker compose up --build
 
 clean:
 	rm -rf data/ .pytest_cache .coverage htmlcov

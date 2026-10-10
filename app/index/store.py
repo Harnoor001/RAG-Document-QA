@@ -11,6 +11,7 @@ import hashlib
 import json
 import shutil
 import tempfile
+import threading
 from dataclasses import asdict, dataclass
 from datetime import UTC, datetime
 from pathlib import Path
@@ -20,7 +21,7 @@ import numpy as np
 
 from app.config import get_settings
 from app.index.embedder import Embedder
-from app.ingest.chunker import Chunk, chunk_pages
+from app.ingest.chunker import CHUNKER_VERSION, Chunk, chunk_pages
 from app.ingest.loader import load_pdf
 
 INDEX_FILE, CHUNKS_FILE, MANIFEST_FILE = "index.faiss", "chunks.jsonl", "manifest.json"
@@ -42,10 +43,11 @@ class Manifest:
     chunk_size: int
     overlap: int
     created_at: str
+    chunker_version: int = 1  # manifests written before the field existed came from version 1
 
     @classmethod
     def from_dict(cls, data: dict) -> Manifest:
-        return cls(**{k: data[k] for k in cls.__dataclass_fields__})
+        return cls(**{k: data[k] for k in cls.__dataclass_fields__ if k in data})
 
 
 @dataclass
@@ -81,11 +83,28 @@ class DocumentStore:
         self.chunk_size = chunk_size if chunk_size is not None else settings.chunk_size
         self.overlap = overlap if overlap is not None else settings.chunk_overlap
         self._cache: dict[str, LoadedDocument] = {}
+        self._lock = threading.RLock()  # the API serves requests from a thread pool
 
     # ---- ingestion ---------------------------------------------------------------------------
 
     def ingest(self, pdf_path: str | Path) -> Manifest:
-        pdf_path = Path(pdf_path)
+        with self._lock:
+            return self._ingest(Path(pdf_path))
+
+    def ingest_bytes(self, data: bytes, filename: str) -> Manifest:
+        """Ingest an uploaded file; ``filename`` is what the manifest records."""
+        workdir = Path(tempfile.mkdtemp(prefix="upload-"))
+        try:
+            path = workdir / Path(filename).name
+            path.write_bytes(data)
+            return self.ingest(path)
+        finally:
+            shutil.rmtree(workdir, ignore_errors=True)
+
+    def has(self, doc_id: str) -> bool:
+        return self._read_manifest(doc_id) is not None
+
+    def _ingest(self, pdf_path: Path) -> Manifest:
         if not pdf_path.is_file():
             raise FileNotFoundError(f"No such file: {pdf_path}")
         doc_id = file_sha256(pdf_path)
@@ -112,6 +131,7 @@ class DocumentStore:
             chunk_size=self.chunk_size,
             overlap=self.overlap,
             created_at=datetime.now(UTC).isoformat(timespec="seconds"),
+            chunker_version=CHUNKER_VERSION,
         )
         self._write(manifest, chunks, index)
         self._cache[doc_id] = LoadedDocument(manifest, chunks, index)
@@ -122,6 +142,7 @@ class DocumentStore:
             manifest.embed_model == self.embedder.name
             and manifest.chunk_size == self.chunk_size
             and manifest.overlap == self.overlap
+            and manifest.chunker_version == CHUNKER_VERSION
             and all(
                 (self.data_dir / manifest.doc_id / f).is_file() for f in (INDEX_FILE, CHUNKS_FILE)
             )
@@ -154,6 +175,10 @@ class DocumentStore:
         return Manifest.from_dict(json.loads(path.read_text()))
 
     def load(self, doc_id: str) -> LoadedDocument:
+        with self._lock:
+            return self._load(doc_id)
+
+    def _load(self, doc_id: str) -> LoadedDocument:
         if doc_id in self._cache:
             return self._cache[doc_id]
         manifest = self._read_manifest(doc_id)
@@ -182,10 +207,11 @@ class DocumentStore:
 
     def delete(self, doc_id: str) -> None:
         folder = self.data_dir / doc_id
-        if not (folder / MANIFEST_FILE).is_file():
-            raise DocumentNotFoundError(doc_id)
-        shutil.rmtree(folder)
-        self._cache.pop(doc_id, None)
+        with self._lock:
+            if not (folder / MANIFEST_FILE).is_file():
+                raise DocumentNotFoundError(doc_id)
+            shutil.rmtree(folder)
+            self._cache.pop(doc_id, None)
 
     def warm_up(self, doc_id: str) -> None:
         """Load the index from disk and the embedding model into memory (no-op once loaded)."""
