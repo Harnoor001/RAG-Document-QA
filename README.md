@@ -21,17 +21,33 @@ flowchart LR
 
 ## Results
 
-Measured by `eval/run_eval.py` on the **test split of a real document's question set**
-(`eval/golden_real.jsonl`), with the confidence threshold tuned on the dev split only. The
-generated fixture's 40 questions are reported separately in `eval/results.md`; they show the
-pipeline works but are not the headline. The table below is written by
-`python -m eval.run_eval --sweep --real-pdf <your.pdf> --update-readme` from a real run; it is
-never edited by hand.
+Measured by `eval/run_eval.py` on a real document, `us_constitution.pdf` (9 pages), with
+questions written by hand in `eval/golden_real.jsonl`: 15 answerable and 5 unanswerable, split
+into dev and test. The confidence threshold was chosen on the dev split only; the headline is
+the test split. Model: llama3.2:3b via Ollama on CPU, MiniLM-L6-v2 embeddings. These are the
+numbers from that run on the author's machine; the generated fixture's results are reported
+separately in `eval/results.md` and are not the headline. To reproduce:
+`python -m eval.run_eval --sweep --real-pdf <your.pdf>`.
 
 <!-- eval:start -->
-Not measured yet. With Ollama running and `eval/golden_real.jsonl` written, run
-`.\run.ps1 eval --real-pdf <your.pdf> --apply --update-readme` (or
-`make eval EVAL_ARGS="--real-pdf <your.pdf> --apply --update-readme"`) to fill this in.
+**Test split** (8 answerable + 3 unanswerable questions, threshold 0.25 picked on dev):
+
+| Metric | Value |
+| --- | --- |
+| Retrieval hit@5 | 100% |
+| Answer accuracy (all gold keywords) | 100% (8/8) |
+| Answer accuracy with correct citations | 75.0% |
+| Citation precision, strict / per page | 75.0% / 87.5% |
+| Refusal accuracy (unanswerable) | 2/3 |
+| Latency p50 | 11.0 s |
+
+**Whole real set** (dev + test, 15 answerable / 5 unanswerable): answer accuracy 13/15 (87%),
+refusal accuracy 4/5. Dev answer accuracy was 5/7 (71.4%).
+
+The sample is small: one test question moves answer accuracy by 12.5 points. The remaining
+errors are the LLM misreading correctly retrieved text (a voting-age question answered from
+the House-age clause, a Vice President question missing "equally divided", ratification
+confused with Article V amendments).
 <!-- eval:end -->
 
 ## Quickstart (local)
@@ -234,12 +250,21 @@ questions at that threshold, with dev alongside for reference:
 - **Fully local.** Embeddings, FAISS and the LLM run on the machine. `HF_HUB_OFFLINE=1` is set
   automatically once the embedding model is cached.
 
-## Limitations
+## Known limitations
 
-- No OCR: scanned pages are flagged empty and not indexed.
+- **Small eval set.** The real-document numbers come from 20 hand-written questions on one
+  9-page PDF (8 answerable + 3 unanswerable in the test split). Treat them as a sanity check,
+  not a benchmark.
+- **The 3B model misreads retrieved text.** Retrieval found the right passage for every
+  failing question; llama3.2:3b still answered from a neighbouring clause or left out a key
+  phrase. Next step: rerun the eval with `LLM_MODEL=llama3.1:8b`.
+- **A single wrong citation can't be detected.** Unsupported extra citations are dropped when
+  another cited chunk clearly matches better, but if the model cites one wrong chunk on its
+  own, nothing is there to compare it against, so it is kept.
+- **No OCR.** Scanned pages are flagged empty and not indexed.
 - One document per question; no cross-document search.
-- Short or vague questions score lower cosine similarity and can be refused; the golden set
-  includes such phrasings so the false-refusal rate is measured, not hidden.
+- Short or vague questions score lower cosine similarity and can be refused; the golden sets
+  include such phrasings so the false-refusal rate is measured, not hidden.
 - Tables are extracted as text rows, so complex tables lose their structure.
 - Answer accuracy uses keyword matching, so a correct answer that words a number differently
   (for example "a month" for "30 days") is counted as wrong.
