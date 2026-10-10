@@ -19,7 +19,7 @@ def indexed(tmp_path_factory, handbook):
 
 
 # HashEmbedder scores are lower than MiniLM's (the verbatim refund sentence scores ~0.34), so
-# tests that are not about the gate use a lower threshold. T2.5 uses the real default, 0.35.
+# tests that are not about the gate use a lower threshold. T2.5 uses 0.35.
 def make(indexed, llm, threshold=0.25):
     store, doc_id = indexed
     return Answerer(Retriever(store, top_k=5), llm, threshold=threshold), doc_id

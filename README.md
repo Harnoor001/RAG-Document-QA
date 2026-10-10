@@ -82,12 +82,16 @@ python -m app.ask 8d9ae4a8c463 "What's the refund window?"
 
 ## Quickstart (Docker)
 
+> **Not verified yet.** The Dockerfile and `docker-compose.yml` pass `docker compose config`,
+> but the images have not been built or run end to end. Use the local quickstart above until
+> this is checked.
+
 ```bash
 docker compose up --build
 ```
 
-This starts Ollama, pulls `LLM_MODEL` (default `llama3.2:3b`) into a volume on first start, then
-starts the app on http://localhost:8000. Indexes and the embedding weights live in volumes, so
+It is meant to start Ollama, pull `LLM_MODEL` (default `llama3.2:3b`) into a volume on first
+start, then start the app on http://localhost:8000. Indexes and the embedding weights live in volumes, so
 restarts are fast. `curl localhost:8000/health` shows `"ollama": "up"` once the model is pulled.
 
 ## API
@@ -139,7 +143,7 @@ Every setting can be overridden with an environment variable (or a `.env` file).
 | `EMBED_MODEL` | `sentence-transformers/all-MiniLM-L6-v2` | embedding model; `hash` selects the offline test embedder |
 | `DATA_DIR` | `data/indexes` | where indexes are stored |
 | `TOP_K` | `5` | chunks retrieved per question |
-| `CONFIDENCE_THRESHOLD` | `0.35` | below this top-1 cosine score the system refuses without calling the LLM |
+| `CONFIDENCE_THRESHOLD` | `0.25` | below this top-1 cosine score the system refuses without calling the LLM |
 | `OLLAMA_URL` | `http://localhost:11434` | Ollama server |
 | `LLM_MODEL` | `llama3.2:3b` | Ollama model, e.g. `llama3.1:8b` |
 | `LLM_TIMEOUT_S` | `60` | per-request timeout (2 retries) |

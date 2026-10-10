@@ -12,7 +12,7 @@ class Settings(BaseSettings):
     data_dir: str = "data/indexes"
 
     top_k: int = 5
-    confidence_threshold: float = 0.35
+    confidence_threshold: float = 0.25
     ollama_url: str = "http://localhost:11434"
     llm_model: str = "llama3.2:3b"
     llm_timeout_s: float = 60.0
